@@ -350,6 +350,33 @@ button {
   border: 1px solid var(--line);
   border-radius: 12px;
 }
+.hexmap.official {
+  background: none;
+}
+
+/* 盘面皮肤切换 */
+.board-bar {
+  min-width: 0;
+}
+.skin-select {
+  display: block;
+  margin: 0 2px 5px auto;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.skin-select:hover {
+  border-color: var(--gold);
+}
+.board-loading {
+  text-align: center;
+  color: var(--dim);
+  padding: 40px 0;
+}
 .deck-info {
   color: var(--dim);
   font-size: 13px;

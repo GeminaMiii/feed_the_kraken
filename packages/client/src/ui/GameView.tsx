@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { RoomFullView, SessionInfo } from '../api';
 import { sendChat, sendCommand, getSocket } from '../api';
-import { HexMap } from './HexMap';
 import { PlayersPanel } from './PlayersPanel';
 import { ActionPanel, cardNameZh } from './ActionPanel';
-import { destinationText } from './HexMap';
-import { CHARACTER_MAP } from '@ftk/engine';
+import { destinationText } from './navcards';
+import { BOARD_SKINS, DEFAULT_SKIN_ID, SKIN_STORAGE_KEY, getSkin } from './boards/registry';
+import { CHARACTER_MAP, getMap } from '@ftk/engine';
 import type { PlayerView } from '@ftk/engine';
 import type { Command } from '@ftk/engine';
 
@@ -40,6 +40,25 @@ export const GameView: React.FC<{
   const [actingSeat, setActingSeat] = useState<number | null>(null); // 代打的机器人座位
   const logRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+  // 盘面皮肤（热插拔）：选择持久化到 localStorage，切换即时生效
+  const [skinId, setSkinId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(SKIN_STORAGE_KEY) ?? DEFAULT_SKIN_ID;
+    } catch {
+      return DEFAULT_SKIN_ID;
+    }
+  });
+  const skin = getSkin(skinId);
+  const Board = skin.Component;
+  const map = useMemo(() => getMap(view.mapId), [view.mapId]);
+  const changeSkin = (id: string) => {
+    setSkinId(id);
+    try {
+      localStorage.setItem(SKIN_STORAGE_KEY, id);
+    } catch {
+      /* 隐私模式等场景下忽略 */
+    }
+  };
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [full.log.length]);
@@ -77,7 +96,23 @@ export const GameView: React.FC<{
           <PlayersPanel view={view} />
         </div>
         <div className="col mid">
-          <HexMap view={view} />
+          <div className="board-bar">
+            <select
+              className="skin-select"
+              value={skinId}
+              onChange={(e) => changeSkin(e.target.value)}
+              title="切换盘面皮肤（即时生效）"
+            >
+              {BOARD_SKINS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nameZh}
+                </option>
+              ))}
+            </select>
+            <Suspense fallback={<div className="panel board-loading">🗺️ 盘面加载中…</div>}>
+              <Board view={view} map={map} />
+            </Suspense>
+          </div>
           <div className="deck-info">
             <span className="pill">🂠 抽牌堆 <b>{view.navDeckCount}</b></span>
             <span className="pill">🌊 弃牌堆 <b>{view.navDiscardCount}</b></span>
