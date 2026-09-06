@@ -5,6 +5,7 @@ import { PlayersPanel } from './PlayersPanel';
 import { ActionPanel, cardNameZh } from './ActionPanel';
 import { destinationText } from './navcards';
 import { BOARD_SKINS, DEFAULT_SKIN_ID, SKIN_STORAGE_KEY, getSkin } from './boards/registry';
+import { characterFaceUrl } from './characters';
 import { CHARACTER_MAP, getMap } from '@ftk/engine';
 import type { PlayerView } from '@ftk/engine';
 import type { Command } from '@ftk/engine';
@@ -17,14 +18,20 @@ const YourCharacter: React.FC<{ view: PlayerView; acting: boolean }> = ({ view, 
   if (!cid) return null;
   const def = CHARACTER_MAP[cid];
   if (!def) return null;
+  const face = characterFaceUrl(cid);
   return (
     <div className={`panel char-panel ${view.you.characterRevealed ? 'revealed' : ''}`}>
       <div className="panel-title">
         {acting ? '🤖 代打角色的牌' : '🎭 你的角色牌'}
         {view.you.characterRevealed ? '（已亮出）' : '（背面）'}
       </div>
-      <div className="char-name">{def.nameZh}</div>
-      <div className="card-text">{def.textZh}</div>
+      <div className="char-body">
+        {face && <img className="char-face" src={face} alt={def.nameZh} />}
+        <div className="char-info">
+          <div className="char-name">{def.nameZh}</div>
+          <div className="card-text">{def.textZh}</div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { PlayerView, ViewPlayer } from '@ftk/engine';
 import { CHARACTER_MAP, NAV_CARD_MAP, NAV_TYPE_ZH, DIRECTION_ZH } from '@ftk/engine';
+import { characterFaceUrl } from './characters';
 
 const cardNameZh = (id: string) => {
   const c = NAV_CARD_MAP[id];
@@ -35,7 +36,12 @@ export const PlayersPanel: React.FC<{ view: PlayerView }> = ({ view }) => {
             <div className="modal-title">
               {inspecting.name} 的角色 · {def.nameZh}
             </div>
-            <div className="card-text">{def.textZh}</div>
+            <div className="char-body">
+              {characterFaceUrl(inspecting.cid) && (
+                <img className="char-face" src={characterFaceUrl(inspecting.cid)!} alt={def.nameZh} />
+              )}
+              <div className="card-text">{def.textZh}</div>
+            </div>
             <button className="btn small" onClick={() => setInspecting(null)}>
               关闭
             </button>
@@ -91,6 +97,15 @@ const PlayerCard: React.FC<{
           >
             {CHARACTER_MAP[p.revealedCharacterId]?.nameZh ?? p.revealedCharacterId} ⓘ
           </span>
+        )}
+        {p.characterRevealed && p.revealedCharacterId && characterFaceUrl(p.revealedCharacterId) && (
+          <img
+            className="pface clickable"
+            src={characterFaceUrl(p.revealedCharacterId)!}
+            alt={CHARACTER_MAP[p.revealedCharacterId]?.nameZh ?? ''}
+            title="点击查看技能"
+            onClick={() => onInspectCharacter(p.revealedCharacterId!)}
+          />
         )}
         {isMe && view.you.faction && <span className="badge mefac">{FACTION_ZH[view.you.faction]}</span>}
       </div>

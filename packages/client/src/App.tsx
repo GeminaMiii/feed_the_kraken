@@ -160,12 +160,26 @@ const Home: React.FC<{
     <div className="home">
       <div className="hero">
         <h1>⚓ 险恶疑航</h1>
-        <p className="sub">Feed the Kraken · 5-11 人在线隐藏身份推理</p>
-        <p className="sub small">忠诚水手驶向蓝湾 · 海盗奔向绯红湾 · 邪教召唤海妖</p>
+        <p className="sub">Feed the Kraken</p>
+        <p className="sub small">
+          5 到 11 人的在线隐藏身份推理：忠诚水手驶向蓝湾，海盗奔向绯红湾，邪教召唤海妖。
+        </p>
+        <svg className="hero-waves" viewBox="0 0 1440 120" preserveAspectRatio="none" aria-hidden="true">
+          <path
+            className="w1"
+            d="M0,58 C240,92 480,28 720,52 C960,76 1200,36 1440,60 L1460,60 L1460,120 L-20,120 L-20,58 Z"
+            fill="rgba(24,58,84,0.55)"
+          />
+          <path
+            className="w2"
+            d="M0,84 C260,110 520,58 780,80 C1040,102 1240,68 1440,86 L1460,86 L1460,120 L-20,120 L-20,84 Z"
+            fill="rgba(13,32,49,0.8)"
+          />
+        </svg>
       </div>
       {resumeList.length > 0 && (
         <div className="panel">
-          <div className="panel-title">🔄 恢复对局</div>
+          <div className="panel-title">恢复对局</div>
           {resumeList.map((s) => (
             <div key={s.roomId} className="seat">
               <span>
@@ -222,7 +236,7 @@ const Home: React.FC<{
               <input value={password} onChange={(e) => setPassword(e.target.value)} maxLength={32} placeholder="留空则无需口令" />
             </label>
             <button className="btn primary big" disabled={busy} onClick={doCreate}>
-              🚢 创建房间
+              创建房间
             </button>
           </>
         ) : (
@@ -236,7 +250,7 @@ const Home: React.FC<{
               <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} maxLength={32} />
             </label>
             <button className="btn primary big" disabled={busy} onClick={doJoin}>
-              🎫 加入房间
+              加入房间
             </button>
           </>
         )}
