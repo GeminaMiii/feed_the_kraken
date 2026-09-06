@@ -49,3 +49,10 @@ coverage/
 
 # ===== 本地改动文档（仅本机，不随仓库分发）=====
 local_docs/
+
+# ===== 角色卡面原始素材（63MB，含官方俄文 PDF，版权与体积均不宜入仓）=====
+docs/characters/
+
+# ===== Agent 计划目录（仅本机）=====
+.zcode/
+.workbuddy/
