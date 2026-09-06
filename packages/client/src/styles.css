@@ -1,14 +1,34 @@
+/* ============================================================
+   险恶疑航 · 夜航 (Night Voyage)
+   ------------------------------------------------------------
+   设计语言：风暴夜的大西洋海面。页面是深海，面板是船壳，
+   唯一的暖色是灯笼金——只照亮「现在轮到谁、走到哪一步」。
+   阵营色（水手蓝 / 海盗红 / 邪教金）是玩法语言，绝不挪作装饰。
+   展示文字用衬线体（船长日志），正文用系统无衬线。
+   ============================================================ */
+
 :root {
-  --bg: #0a1d29;
-  --panel: #10293a;
-  --panel2: #153448;
-  --line: #27506a;
-  --text: #d9e8f0;
-  --dim: #7ba2b8;
-  --gold: #ffd34d;
+  --abyss: #081621;      /* 深海夜 · 页面底色 */
+  --hull: #0f2334;       /* 船壳 · 面板底色 */
+  --hull-deep: #0b1b29;  /* 船壳暗部 · 内嵌区域 */
+  --seam: #22435c;       /* 板缝 · 描边 */
+  --seam-lit: #33586f;   /* 受光板缝 */
+  --lantern: #e8b44c;    /* 灯笼金 · 唯一暖强调 */
+  --foam: #93b7cc;       /* 泡沫灰蓝 · 次级文字 */
+  --mist: #d7e4ed;       /* 雾白 · 主文字 */
+  /* 玩法语义色（保持与棋盘/徽章一致，不可挪用） */
+  --gold: #f2c94c;
   --blue: #4db8ff;
-  --red: #e05555;
+  --red: #e05545;
   --green: #6cc24a;
+  --text: var(--mist);
+  --dim: var(--foam);
+  --panel: var(--hull);
+  --panel2: var(--hull-deep);
+  --line: var(--seam);
+  /* 字体 */
+  --serif: Georgia, 'Times New Roman', 'STZhongsong', 'SimSun', serif;
+  --sans: system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif;
 }
 
 * {
@@ -17,10 +37,15 @@
 
 body {
   margin: 0;
-  background: radial-gradient(ellipse at 50% -20%, #14405c 0%, var(--bg) 60%);
-  color: var(--text);
-  font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
   min-height: 100vh;
+  color: var(--mist);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  background:
+    radial-gradient(ellipse 120% 55% at 50% -12%, #17405c 0%, rgba(23, 64, 92, 0) 60%),
+    linear-gradient(180deg, #0a1c2b 0%, var(--abyss) 46%, #06101a 100%);
+  background-attachment: fixed;
 }
 
 #root {
@@ -31,44 +56,62 @@ body {
 
 h1 {
   margin: 0;
-  letter-spacing: 2px;
+  font-family: var(--serif);
+  font-weight: 700;
 }
 
 button {
   font-family: inherit;
 }
 
+:focus-visible {
+  outline: 2px solid var(--lantern);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- 按钮 ---------- */
+
 .btn {
-  background: linear-gradient(180deg, #1d4560 0%, #16374d 100%);
-  border: 1px solid var(--line);
-  color: var(--text);
-  border-radius: 8px;
+  background: linear-gradient(180deg, #143048 0%, #0f2334 100%);
+  border: 1px solid var(--seam);
+  color: var(--mist);
+  border-radius: 6px;
   padding: 8px 14px;
   font-size: 14px;
   cursor: pointer;
   margin: 3px;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 .btn:hover:not(:disabled) {
-  filter: brightness(1.2);
+  border-color: var(--seam-lit);
+  background: linear-gradient(180deg, #1a3d59 0%, #143048 100%);
 }
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 .btn.primary {
-  background: linear-gradient(180deg, #2d6da0 0%, #1e4d74 100%);
-  border-color: #3f83b8;
-  font-weight: 600;
+  background: linear-gradient(180deg, #f0c05e 0%, #d9a33a 100%);
+  border-color: #b8873a;
+  color: #241a06;
+  font-weight: 700;
+}
+.btn.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f6ca6e 0%, #e2ad44 100%);
+  border-color: #d9a33a;
 }
 .btn.danger {
-  background: linear-gradient(180deg, #8a2f2f 0%, #5f1f1f 100%);
-  border-color: #a54040;
+  background: linear-gradient(180deg, #6e2620 0%, #4a1a16 100%);
+  border-color: #8f3b32;
+  color: #f0c8c0;
 }
 .btn.sel {
-  outline: 2px solid var(--gold);
+  outline: 2px solid var(--lantern);
+  outline-offset: -1px;
 }
 .btn.big {
-  font-size: 17px;
+  font-size: 16px;
   padding: 12px 22px;
   width: 100%;
   margin-top: 10px;
@@ -83,20 +126,28 @@ button {
   margin: 0 2px;
 }
 
+/* ---------- 面板 ---------- */
+
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  background: var(--hull);
+  border: 1px solid var(--seam);
+  border-top-color: var(--seam-lit);
+  border-radius: 8px;
   padding: 12px 14px;
   margin-bottom: 12px;
 }
 .panel-title {
   font-weight: 700;
-  margin-bottom: 8px;
-  color: var(--gold);
+  margin-bottom: 10px;
+  padding-bottom: 7px;
+  padding-left: 9px;
+  border-left: 3px solid var(--lantern);
+  border-bottom: 1px solid var(--seam);
+  color: var(--mist);
+  letter-spacing: 0.5px;
 }
 .hint {
-  color: var(--dim);
+  color: var(--foam);
   font-size: 14px;
   margin: 6px 0;
 }
@@ -105,26 +156,92 @@ button {
   font-size: 12.5px;
 }
 .err {
-  background: #3a1a1a;
-  border: 1px solid #7a3a3a;
-  color: #f0b0b0;
+  background: #2e1512;
+  border: 1px solid #6e332b;
+  color: #f0b8ae;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   margin: 8px 0;
 }
 
-/* 首页 */
+/* ---------- 首页 ---------- */
+
 .home {
-  max-width: 460px;
-  margin: 30px auto;
+  max-width: 470px;
+  margin: 0 auto;
+  padding: 7vh 16px 40px;
 }
 .hero {
+  position: relative;
   text-align: center;
-  margin-bottom: 18px;
+  margin-bottom: 26px;
+  padding-bottom: 6px;
+  animation: hero-rise 0.7s ease-out both;
+}
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.hero h1 {
+  font-size: 44px;
+  letter-spacing: 10px;
+  text-indent: 10px; /* 抵消末字字距，保持视觉居中 */
+  color: var(--mist);
+  text-shadow: 0 2px 22px rgba(232, 180, 76, 0.25);
 }
 .hero .sub {
-  color: var(--dim);
-  margin: 4px 0;
+  color: var(--foam);
+  margin: 10px 0 4px;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.hero .sub.small {
+  color: #6e93a9;
+  font-size: 13px;
+}
+.hero-waves {
+  display: block;
+  width: 100%;
+  height: 64px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+.hero-waves path {
+  transform-origin: center;
+}
+.hero-waves .w1 {
+  animation: wave-drift 9s ease-in-out infinite alternate;
+}
+.hero-waves .w2 {
+  animation: wave-drift 13s ease-in-out infinite alternate-reverse;
+}
+@keyframes wave-drift {
+  from {
+    transform: translateX(-14px);
+  }
+  to {
+    transform: translateX(14px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero {
+    animation: none;
+  }
+  .hero-waves .w1,
+  .hero-waves .w2 {
+    animation: none;
+  }
+  .btn,
+  .tab,
+  .skin-select {
+    transition: none;
+  }
 }
 .tabs {
   display: flex;
@@ -135,20 +252,22 @@ button {
   flex: 1;
   padding: 8px;
   background: transparent;
-  border: 1px solid var(--line);
-  color: var(--dim);
-  border-radius: 8px;
+  border: 1px solid var(--seam);
+  color: var(--foam);
+  border-radius: 6px;
   cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 .tab.on {
-  background: var(--panel2);
-  color: var(--text);
+  background: var(--hull-deep);
+  border-color: var(--lantern);
+  color: var(--mist);
   font-weight: 700;
 }
 .field {
   display: block;
   margin: 10px 0;
-  color: var(--dim);
+  color: var(--foam);
   font-size: 13px;
 }
 .field input,
@@ -156,60 +275,81 @@ button {
   display: block;
   width: 100%;
   margin-top: 4px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  color: var(--text);
-  border-radius: 8px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  color: var(--mist);
+  border-radius: 6px;
   padding: 9px 12px;
   font-size: 15px;
 }
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--lantern);
+}
 .foot {
   text-align: center;
-  color: var(--dim);
+  color: #62869c;
 }
 
-/* 顶栏 */
+/* ---------- 顶栏（舰桥） ---------- */
+
 .topbar {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 8px 14px;
+  background: linear-gradient(180deg, #102638 0%, #0d1f2e 100%);
+  border: 1px solid var(--seam);
+  border-radius: 8px;
+  padding: 8px 16px;
   margin-bottom: 10px;
   flex-wrap: wrap;
 }
 .topbar .title {
-  font-weight: 800;
-  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 2px;
+  color: var(--lantern);
 }
 .room-id {
-  font-family: monospace;
-  background: var(--panel2);
-  padding: 3px 10px;
-  border-radius: 6px;
-  letter-spacing: 2px;
+  font-family: var(--serif);
+  background: var(--hull-deep);
+  border: 1px solid var(--seam-lit);
+  color: var(--mist);
+  padding: 2px 12px;
+  border-radius: 4px;
+  letter-spacing: 3px;
+  font-size: 14px;
 }
 .stage {
-  color: var(--blue);
+  font-family: var(--serif);
+  color: var(--lantern);
+  font-size: 16px;
+  background: #0a1826;
+  border: 1px solid var(--seam);
+  border-radius: 4px;
+  padding: 3px 14px;
+  box-shadow: inset 0 0 18px rgba(232, 180, 76, 0.08);
 }
 .waiting {
-  color: var(--dim);
+  color: var(--foam);
   font-size: 13px;
   flex: 1;
   min-width: 160px;
+  text-align: right;
 }
 .conn-banner {
-  background: #4a3a14;
+  background: #3a2e10;
   border: 1px solid #8a6a20;
   color: #ffe0a0;
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: 6px;
   margin-bottom: 8px;
 }
 
-/* 大厅 */
+/* ---------- 大厅 ---------- */
+
 .lobby {
   max-width: 720px;
   margin: 20px auto;
@@ -223,8 +363,10 @@ button {
   justify-content: space-between;
   align-items: center;
   padding: 8px 10px;
-  background: var(--panel2);
-  border-radius: 8px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  border-left: 3px solid var(--seam-lit);
+  border-radius: 6px;
   margin: 5px 0;
 }
 .seat.discon {
@@ -236,7 +378,8 @@ button {
   gap: 4px;
 }
 
-/* 对局布局 */
+/* ---------- 对局布局 ---------- */
+
 .game-main {
   display: grid;
   grid-template-columns: 260px 1fr 340px;
@@ -255,24 +398,28 @@ button {
   min-width: 0;
 }
 
-/* 玩家卡 */
+/* ---------- 船员名册 ---------- */
+
 .players {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 .pcard {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  border-left: 3px solid var(--seam-lit);
+  border-radius: 6px;
   padding: 8px 10px;
 }
 .pcard.me {
-  border-color: var(--gold);
+  border-left-color: var(--lantern);
+  background: linear-gradient(180deg, #10293c 0%, var(--hull-deep) 100%);
 }
 .pcard.dead {
   opacity: 0.5;
   filter: grayscale(0.7);
+  border-left-color: #3a3a3a;
 }
 .prow {
   display: flex;
@@ -282,7 +429,7 @@ button {
 }
 .prow.small {
   font-size: 13px;
-  color: var(--dim);
+  color: var(--foam);
   margin-top: 3px;
 }
 .pname {
@@ -294,16 +441,17 @@ button {
 }
 .badge {
   font-size: 11.5px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  background: transparent;
+  border: 1px solid var(--seam-lit);
+  border-radius: 4px;
   padding: 1px 6px;
-  color: var(--dim);
+  color: var(--foam);
 }
 .badge.cap {
-  color: var(--gold);
-  border-color: var(--gold);
+  color: var(--lantern);
+  border-color: var(--lantern);
   font-weight: 700;
+  background: rgba(232, 180, 76, 0.08);
 }
 .badge.lt {
   color: var(--blue);
@@ -314,7 +462,7 @@ button {
   border-color: var(--green);
 }
 .badge.off {
-  color: #d99;
+  color: #d99a8f;
   border-color: #7a4444;
 }
 .badge.mate {
@@ -326,29 +474,30 @@ button {
   border-color: #7a5fa8;
 }
 .badge.mefac {
-  color: var(--gold);
-  border-color: var(--gold);
+  color: var(--lantern);
+  border-color: var(--lantern);
 }
 .badge.notf {
   color: #f0a0a0;
 }
 .badge.discon {
-  color: #d99;
+  color: #d99a8f;
 }
 .badge.ready {
   color: var(--green);
   border-color: var(--green);
 }
 
-/* 地图 */
+/* ---------- 盘面 ---------- */
+
 .hexmap {
   display: block;
   margin: 0 auto;
   max-width: 100%;
   height: auto;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  background: var(--hull);
+  border: 1px solid var(--seam);
+  border-radius: 8px;
 }
 .hexmap.official {
   background: none;
@@ -359,31 +508,33 @@ button {
   min-width: 0;
 }
 .skin-select {
-  display: block;
-  margin: 0 2px 5px auto;
+  display: inline-block;
+  margin: 0 2px 5px;
   background: var(--panel2);
   color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid var(--seam);
+  border-radius: 6px;
   font-size: 12px;
   padding: 3px 8px;
   cursor: pointer;
+  transition: border-color 0.15s ease;
 }
 .skin-select:hover {
-  border-color: var(--gold);
+  border-color: var(--lantern);
 }
 .board-loading {
   text-align: center;
-  color: var(--dim);
+  color: var(--foam);
   padding: 40px 0;
 }
 .deck-info {
-  color: var(--dim);
+  color: var(--foam);
   font-size: 13px;
   margin: 6px 2px;
 }
 
-/* 行动面板 */
+/* ---------- 行动面板 ---------- */
+
 .panel .btns {
   display: flex;
   flex-wrap: wrap;
@@ -399,16 +550,20 @@ button {
   width: 40px;
   height: 40px;
   font-size: 22px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--text);
+  border-radius: 6px;
+  border: 1px solid var(--seam);
+  background: var(--hull-deep);
+  color: var(--mist);
   cursor: pointer;
 }
+.stepper button:hover {
+  border-color: var(--seam-lit);
+}
 .stepper .count {
-  font-size: 26px;
-  font-weight: 800;
-  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--lantern);
   min-width: 34px;
   text-align: center;
 }
@@ -421,10 +576,10 @@ button {
 .alloc-row button {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--text);
+  border-radius: 6px;
+  border: 1px solid var(--seam);
+  background: var(--hull-deep);
+  color: var(--mist);
   cursor: pointer;
 }
 .hand {
@@ -433,22 +588,22 @@ button {
   margin: 10px 0;
 }
 .navcard {
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  border-radius: 6px;
   padding: 10px;
   min-width: 150px;
 }
 .navcard-name {
-  font-weight: 800;
+  font-weight: 700;
   margin-bottom: 8px;
-  color: var(--gold);
+  color: var(--lantern);
 }
 .card-text {
-  color: var(--dim);
+  color: var(--foam);
   font-size: 13px;
   margin: 8px 0;
-  border-left: 3px solid var(--line);
+  border-left: 3px solid var(--seam);
   padding-left: 8px;
 }
 .hand-strip {
@@ -458,25 +613,26 @@ button {
   margin: 6px 2px;
 }
 .minicard {
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  border-radius: 4px;
   padding: 2px 8px;
 }
 
-/* 日志与聊天 */
+/* ---------- 日志与聊天 ---------- */
+
 .log {
   max-height: 300px;
   overflow-y: auto;
   font-size: 13.5px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 .log.chat {
   max-height: 180px;
 }
 .log-line {
-  padding: 2px 0;
-  border-bottom: 1px dashed #1c3a4d;
+  padding: 3px 0;
+  border-bottom: 1px dashed #1a3648;
 }
 .chat-line {
   padding: 2px 0;
@@ -488,14 +644,19 @@ button {
 }
 .chat-form input {
   flex: 1;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  color: var(--text);
-  border-radius: 8px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  color: var(--mist);
+  border-radius: 6px;
   padding: 7px 10px;
 }
+.chat-form input:focus {
+  outline: none;
+  border-color: var(--lantern);
+}
 
-/* 结果 */
+/* ---------- 结果 ---------- */
+
 .result .reveal {
   width: 100%;
   border-collapse: collapse;
@@ -503,21 +664,22 @@ button {
 }
 .result .reveal td {
   padding: 4px 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--seam);
 }
 .result .win {
   color: var(--green);
   font-weight: 700;
 }
 .result .lose {
-  color: var(--dim);
+  color: var(--foam);
 }
 .result-line {
   font-size: 16px;
   margin: 6px 0;
 }
 
-/* 代打切换条 */
+/* ---------- 代打切换条 ---------- */
+
 .bot-switch {
   display: flex;
   flex-wrap: wrap;
@@ -525,52 +687,123 @@ button {
   align-items: center;
   margin: 8px 0;
   padding: 6px;
-  background: var(--panel2);
-  border: 1px dashed var(--line);
-  border-radius: 8px;
+  background: var(--hull-deep);
+  border: 1px dashed var(--seam);
+  border-radius: 6px;
 }
 
-/* 牌堆信息 */
+/* ---------- 牌堆信息 ---------- */
+
 .deck-info .pill {
   display: inline-block;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  background: var(--hull-deep);
+  border: 1px solid var(--seam);
+  border-radius: 4px;
   padding: 3px 10px;
   margin: 3px 6px 3px 0;
   font-size: 13px;
-  color: var(--dim);
+  color: var(--foam);
 }
-.deck-info .pill b { color: var(--text); }
+.deck-info .pill b {
+  color: var(--mist);
+}
 
-/* 角色牌面板 */
-.char-panel { border-left: 3px solid var(--gold); }
-.char-panel.revealed { border-left-color: var(--green); }
-.char-name { font-weight: 800; font-size: 15px; color: var(--gold); margin-bottom: 2px; }
+/* ---------- 角色牌面板 ---------- */
 
-/* 履历徽章 */
-.badge.resume { color: #a8d0e8; border-color: #3a6a88; font-size: 11px; }
+.char-panel {
+  border-left: 3px solid var(--lantern);
+}
+.char-panel.revealed {
+  border-left-color: var(--green);
+}
+.char-name {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--lantern);
+  margin-bottom: 2px;
+}
+.char-body {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.char-face {
+  width: 110px;
+  flex: none;
+  display: block;
+  border-radius: 6px;
+  border: 1px solid var(--seam-lit);
+}
+.char-info {
+  min-width: 0;
+  flex: 1;
+}
+.char-info .card-text {
+  margin: 4px 0;
+}
+.pface {
+  width: 34px;
+  height: 45px;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 4px;
+  border: 1px solid var(--seam-lit);
+  display: block;
+}
+.pface.clickable {
+  cursor: pointer;
+}
+.pface.clickable:hover {
+  border-color: var(--lantern);
+}
+.modal .char-face {
+  width: 150px;
+  flex: none;
+}
 
-.minicard small { color: var(--dim); font-weight: 400; }
+/* ---------- 履历徽章 ---------- */
 
-/* 角色技能查看弹窗 */
-.badge.chr.clickable { cursor: pointer; }
-.badge.chr.clickable:hover { filter: brightness(1.4); }
+.badge.resume {
+  color: #a8d0e8;
+  border-color: #3a6a88;
+  font-size: 11px;
+}
+
+.minicard small {
+  color: var(--foam);
+  font-weight: 400;
+}
+
+/* ---------- 角色技能查看弹窗 ---------- */
+
+.badge.chr.clickable {
+  cursor: pointer;
+}
+.badge.chr.clickable:hover {
+  filter: brightness(1.4);
+}
 .modal-mask {
   position: fixed;
   inset: 0;
-  background: rgba(4, 14, 22, 0.72);
+  background: rgba(3, 10, 16, 0.75);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
 }
 .modal {
-  background: var(--panel);
-  border: 1px solid var(--gold);
-  border-radius: 12px;
+  background: var(--hull);
+  border: 1px solid var(--lantern);
+  border-radius: 8px;
   padding: 18px 20px;
   max-width: 380px;
   width: 90%;
 }
-.modal-title { font-weight: 800; color: var(--gold); margin-bottom: 8px; }
+.modal-title {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--lantern);
+  margin-bottom: 8px;
+}
