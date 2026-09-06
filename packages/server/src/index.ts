@@ -14,10 +14,15 @@ import { Command } from '@ftk/engine';
 import { RateLimiter, setServerSecret } from './util';
 import { randomBytes } from 'node:crypto';
 
+// 默认路径基于 __dirname（packages/server/dist，编译后与 src 同相对深度）解析，与启动目录无关：
+// 仓库根 = dist 上溯三级；数据库固定在仓库根 data/ftk.db（README 约定），
+// 客户端构建产物在 packages/client/dist。无论从 start.bat（仓库根）还是 npm workspace 启动都一致；
+// env 变量可覆盖。
+const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
-const DB_PATH = process.env.FTK_DB ?? path.join(process.cwd(), 'data', 'ftk.db');
-const CLIENT_DIST = process.env.FTK_CLIENT_DIST ?? path.join(process.cwd(), '..', 'client', 'dist');
+const DB_PATH = process.env.FTK_DB ?? path.join(REPO_ROOT, 'data', 'ftk.db');
+const CLIENT_DIST = process.env.FTK_CLIENT_DIST ?? path.join(REPO_ROOT, 'packages', 'client', 'dist');
 const ALLOWED_ORIGIN = process.env.FTK_ALLOWED_ORIGIN ?? '*'; // 生产建议设为具体来源
 const CLEANUP_INTERVAL_MS = Number(process.env.FTK_CLEANUP_INTERVAL_MS ?? 3600_000);
 
