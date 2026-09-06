@@ -25,9 +25,6 @@ deploy/*credentials*
 deploy/cloudflared*
 cloudflared*
 
-# ===== 版权资料（官方规则书/角色卡 PDF、地图照片与渲染图，禁止分发）=====
-docs/rules-sources/
-pics/
 
 # ===== 日志 =====
 logs/
