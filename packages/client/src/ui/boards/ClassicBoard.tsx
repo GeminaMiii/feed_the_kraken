@@ -51,10 +51,11 @@ const ClassicBoard: React.FC<BoardProps> = ({ view, map }) => {
   const rw = RW * 0.9;
   const rh = RH * 0.9;
   const moved = view.prevShipHex !== view.shipHex;
-  const fromHex = map.hexes[view.prevShipHex];
-  const from = moved && fromHex ? pos(fromHex.row, fromHex.col) : null;
+  // 防御：船位/上次船位在地图数据中不存在时不渲染标记（旧存档或数据版本差异）
+  const fromHex = moved ? map.hexes[view.prevShipHex] : undefined;
   const toHex = map.hexes[view.shipHex];
-  const to = pos(toHex.row, toHex.col);
+  const from = moved && fromHex ? pos(fromHex.row, fromHex.col) : null;
+  const to = toHex ? pos(toHex.row, toHex.col) : null;
 
   return (
     <svg
@@ -106,12 +107,14 @@ const ClassicBoard: React.FC<BoardProps> = ({ view, map }) => {
           </g>
         );
       })}
-      {moved && from && (
+      {moved && from && to && (
         <line x1={from.cx} y1={from.cy} x2={to.cx} y2={to.cy} stroke="#ffd34d" strokeWidth={3.5} strokeDasharray="7 5" opacity={0.9} />
       )}
-      <text x={to.cx} y={to.cy + 7} textAnchor="middle" fontSize={22}>
-        ⛵
-      </text>
+      {to && (
+        <text x={to.cx} y={to.cy + 7} textAnchor="middle" fontSize={22}>
+          ⛵
+        </text>
+      )}
       <text x={8} y={height - 8} fill="#5f8fa8" fontSize={11}>
         🔍舱搜 🐙献祭 🪢鞭刑 🗡️割舌 · 箭头颜色=导航牌颜色（黄北/红西/蓝东）· 金色虚线为上次航行 · 「胜」=驶入胜利区
       </text>
