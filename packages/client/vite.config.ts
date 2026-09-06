@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // @ftk/engine 是工作区 CJS 包（__exportStar 转发导出），dev 下必须显式预打包为 ESM，
+  // 否则浏览器原生 import 拿不到命名导出（生产构建由 commonjsOptions 兜底）
+  optimizeDeps: {
+    include: ['@ftk/engine'],
+  },
   server: {
     port: 5173,
     proxy: {
