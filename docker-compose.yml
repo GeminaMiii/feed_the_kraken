@@ -1,0 +1,15 @@
+services:
+  ftk:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ftk-data:/app/data       # 对局存档持久化
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - FTK_ALLOWED_ORIGIN=*    # 公网部署建议改为你的域名
+      # - FTK_RATE_COMMAND=30   # 可选：调整限速
+    restart: unless-stopped
+volumes:
+  ftk-data:

@@ -1,0 +1,51 @@
+# ===== 依赖 =====
+node_modules/
+
+# ===== 构建产物 =====
+dist/
+packages/*/dist/
+*.tsbuildinfo
+
+# ===== 运行时数据（含对局存档与会话凭据哈希，严禁上传）=====
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# ===== 密钥与环境变量 =====
+.env
+.env.*
+!.env.example
+*.local
+deploy/*credentials*
+*.pem
+*.key
+
+# ===== 大体积第三方二进制（cloudflared 等工具请自行下载）=====
+deploy/cloudflared*
+cloudflared*
+
+# ===== 版权资料（官方规则书/角色卡 PDF、地图照片与渲染图，禁止分发）=====
+docs/rules-sources/
+pics/
+
+# ===== 日志 =====
+logs/
+*.log
+npm-debug.log*
+
+# ===== 编辑器与操作系统 =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ===== 测试与覆盖率产物 =====
+coverage/
+
+# ===== 临时文件 =====
+*.tmp
+*.bak
