@@ -1,147 +1,227 @@
-// 地图数据（重建版）
-//
-// ⚠️ 数据来源与核验状态（详见 local_docs/2026-09-06_盘面美工与热插拔.md）：
-// - 长航程（31格）：格子 id 沿用棋盘编号 h1..h31（与引擎测试 effects.test.ts 中的
-//   shipHex 坐标一致）；拓扑与出口表转录自社区逆向数据 docs/rules-sources/community_mapLong.js
-//   （EXIT_TABLE 为其数字实现的预计算出口，已含自洽性校验），行动格分布与官方照片核对一致。
-// - 快航程（22格）：id 采用 h{row}_{col}；依据官方正视图照片（pics/short.jpeg）逐格转录重建，
-//   含几何邻接与箭头方向推断；个别边缘格的出口存在少量主观判断。
-// 两者均标记 dataStatus: 'unverified'，建议与实体板逐格复核。
-//
-// 坐标约定：row 越大越靠北（1 = 南端起点），col 为水平列（渲染时不交错）。
-// 出口方向：north=黄牌 / west=红牌 / east=蓝牌；目标为格子 id 或 victory_* 终点。
+import { GameMap, MapHex } from '../types';
 
-import type { GameMap, MapActionKind, MapHex } from '../types';
+// ============================================================
+// 长航程地图（Long Journey, 7+ 人）
+// 拓扑来源：社区逆向数据（github.com/ahmedbasamadz/FeedTheKraken mapLong.js），
+// 已用官方规则书地图照片粗核图标分布（4舱搜/2鞭刑/1割舌/3献祭 完全一致）。
+// 出口表尚未逐格与实体板核验 —— dataStatus: 'unverified'，见 docs/RULES_NOTES.md §10。
+// 坐标系：row 1(南) → 7(北)；col 西负东正。
+// ============================================================
 
 type HexInit = {
-  row: number;
+  id: string;
+  row: number; // 1..7 南→北（离散行，含 0.5 行记为 row+0.5）
   col: number;
-  north: string;
-  west: string;
-  east: string;
-  action?: MapActionKind;
-  supply?: boolean;
+  n?: string;
+  w?: string;
+  e?: string;
+  action?: MapHex['action'];
 };
 
-function buildMap(init: Record<string, HexInit>): Record<string, MapHex> {
+const V_P = 'victory_pirate';
+const V_S = 'victory_sailor';
+const V_C = 'victory_cult';
+
+// 出口表（north/west/east），来自社区 EXIT_TABLE，编号→hexId
+const EXITS: Record<number, { n: string; w: string; e: string }> = {
+  1: { n: '4', w: '2', e: '3' },
+  2: { n: '5', w: '5', e: '4' },
+  3: { n: '6', w: '4', e: '6' },
+  4: { n: '8', w: '5', e: '6' },
+  5: { n: '10', w: '7', e: '8' },
+  6: { n: '11', w: '8', e: '9' },
+  7: { n: '12', w: '12', e: '10' },
+  8: { n: '10', w: '10', e: '11' },
+  9: { n: '14', w: '11', e: '14' },
+  10: { n: '16', w: '12', e: '13' },
+  11: { n: '17', w: '13', e: '14' },
+  12: { n: '19', w: '15', e: '16' },
+  13: { n: '20', w: '16', e: '17' },
+  14: { n: '21', w: '17', e: '18' },
+  15: { n: '19', w: '22', e: '19' },
+  16: { n: '23', w: '19', e: '20' },
+  17: { n: '24', w: '20', e: '21' },
+  18: { n: '21', w: '21', e: '25' },
+  19: { n: '23', w: '26', e: '23' },
+  20: { n: '27', w: '23', e: '24' },
+  21: { n: '24', w: '24', e: '28' },
+  22: { n: V_P, w: V_P, e: '26' },
+  23: { n: '29', w: '26', e: '27' },
+  24: { n: '30', w: '27', e: '28' },
+  25: { n: V_S, w: '28', e: V_S },
+  26: { n: V_P, w: V_P, e: '29' },
+  27: { n: '31', w: '29', e: '30' },
+  28: { n: V_S, w: '30', e: V_S },
+  29: { n: V_P, w: V_P, e: '31' },
+  30: { n: V_S, w: '31', e: V_S },
+  31: { n: V_C, w: V_C, e: V_C },
+};
+
+// {num, col, row}
+const NODES: { num: number; col: number; row: number }[] = [
+  { num: 1, col: 0, row: 1 },
+  { num: 2, col: -1, row: 1.5 },
+  { num: 3, col: 1, row: 1.5 },
+  { num: 4, col: 0, row: 2 },
+  { num: 5, col: -1, row: 2.5 },
+  { num: 6, col: 1, row: 2.5 },
+  { num: 7, col: -2, row: 3 },
+  { num: 8, col: 0, row: 3 },
+  { num: 9, col: 2, row: 3 },
+  { num: 10, col: -1, row: 3.5 },
+  { num: 11, col: 1, row: 3.5 },
+  { num: 12, col: -2, row: 4 },
+  { num: 13, col: 0, row: 4 },
+  { num: 14, col: 2, row: 4 },
+  { num: 15, col: -3, row: 4.5 },
+  { num: 16, col: -1, row: 4.5 },
+  { num: 17, col: 1, row: 4.5 },
+  { num: 18, col: 3, row: 4.5 },
+  { num: 19, col: -2, row: 5 },
+  { num: 20, col: 0, row: 5 },
+  { num: 21, col: 2, row: 5 },
+  { num: 22, col: -3, row: 5.5 },
+  { num: 23, col: -1, row: 5.5 },
+  { num: 24, col: 1, row: 5.5 },
+  { num: 25, col: 3, row: 5.5 },
+  { num: 26, col: -2, row: 6 },
+  { num: 27, col: 0, row: 6 },
+  { num: 28, col: 2, row: 6 },
+  { num: 29, col: -1, row: 6.5 },
+  { num: 30, col: 1, row: 6.5 },
+  { num: 31, col: 0, row: 7 },
+];
+
+// 行动格分布（与官方照片核对一致）
+const ACTIONS: Record<number, MapHex['action']> = {
+  5: 'cabinSearch',
+  6: 'cabinSearch',
+  7: 'cabinSearch',
+  8: 'cabinSearch',
+  13: 'offWithTongue',
+  16: 'flogging',
+  17: 'flogging',
+  23: 'feedTheKraken',
+  24: 'feedTheKraken',
+  27: 'feedTheKraken',
+};
+
+const SUPPLY_LINE_ROW = 4; // row >= 4 视为补给线以北（依据地图照片虚线位置，待最终核验）
+
+function buildLongMap(): GameMap {
   const hexes: Record<string, MapHex> = {};
-  for (const [id, h] of Object.entries(init)) {
-    hexes[id] = {
-      id,
-      row: h.row,
-      col: h.col,
-      exits: { north: h.north, west: h.west, east: h.east },
-      ...(h.action ? { action: h.action } : {}),
-      ...(h.supply ? { supply: true } : {}),
+  for (const node of NODES) {
+    const ex = EXITS[node.num];
+    hexes[`h${node.num}`] = {
+      id: `h${node.num}`,
+      row: node.row,
+      col: node.col,
+      exits: {
+        north: ex.n.startsWith('victory_') ? ex.n : `h${ex.n}`,
+        west: ex.w.startsWith('victory_') ? ex.w : `h${ex.w}`,
+        east: ex.e.startsWith('victory_') ? ex.e : `h${ex.e}`,
+      },
+      action: ACTIONS[node.num],
+      supply: node.row >= SUPPLY_LINE_ROW,
     };
   }
-  return hexes;
+  return {
+    id: 'long',
+    nameZh: '长航程（7-11人）',
+    hexes,
+    startHexId: 'h1',
+    dataStatus: 'unverified',
+  };
 }
 
-// ============ 长航程（8-11人，31格 + 3胜利终点） ============
-// 来源：community_mapLong.js NODES/EXIT_TABLE（num=h1..h31）。
-// 行动格：4舱搜(h5-h8) 2鞭刑(h16,h17) 1割舌(h13) 3献祭(h23,h24,h27)；补给线以北(row>=4)为供应区。
-const LONG_INIT: Record<string, HexInit> = {
-  // r1（南端）
-  'h1': { row: 1, col: 0, north: 'h4', west: 'h2', east: 'h3' },
-  'h2': { row: 1, col: -1, north: 'h5', west: 'h5', east: 'h4' },
-  'h3': { row: 1, col: 1, north: 'h6', west: 'h4', east: 'h6' },
-  // r2
-  'h4': { row: 2, col: 0, north: 'h8', west: 'h5', east: 'h6' },
-  'h5': { row: 2, col: -1, north: 'h10', west: 'h7', east: 'h8', action: 'cabinSearch' },
-  'h6': { row: 2, col: 1, north: 'h11', west: 'h8', east: 'h9', action: 'cabinSearch' },
-  // r3
-  'h7': { row: 3, col: -2, north: 'h12', west: 'h12', east: 'h10', action: 'cabinSearch' },
-  'h8': { row: 3, col: 0, north: 'h10', west: 'h10', east: 'h11', action: 'cabinSearch' },
-  'h9': { row: 3, col: 2, north: 'h14', west: 'h11', east: 'h14' },
-  'h10': { row: 3, col: -1, north: 'h16', west: 'h12', east: 'h13' },
-  'h11': { row: 3, col: 1, north: 'h17', west: 'h13', east: 'h14' },
-  // r4（补给线以北）
-  'h12': { row: 4, col: -2, north: 'h19', west: 'h15', east: 'h16', supply: true },
-  'h13': { row: 4, col: 0, north: 'h20', west: 'h16', east: 'h17', action: 'offWithTongue', supply: true },
-  'h14': { row: 4, col: 2, north: 'h21', west: 'h17', east: 'h18', supply: true },
-  'h15': { row: 4, col: -3, north: 'h19', west: 'h22', east: 'h19', supply: true },
-  'h16': { row: 4, col: -1, north: 'h23', west: 'h19', east: 'h20', action: 'flogging', supply: true },
-  'h17': { row: 4, col: 1, north: 'h24', west: 'h20', east: 'h21', action: 'flogging', supply: true },
-  'h18': { row: 4, col: 3, north: 'h21', west: 'h21', east: 'h25', supply: true },
-  // r5
-  'h19': { row: 5, col: -2, north: 'h23', west: 'h26', east: 'h23', supply: true },
-  'h20': { row: 5, col: 0, north: 'h27', west: 'h23', east: 'h24', supply: true },
-  'h21': { row: 5, col: 2, north: 'h24', west: 'h24', east: 'h28', supply: true },
-  'h22': { row: 5, col: -3, north: 'victory_pirate', west: 'victory_pirate', east: 'h26', supply: true },
-  'h23': { row: 5, col: -1, north: 'h29', west: 'h26', east: 'h27', action: 'feedTheKraken', supply: true },
-  'h24': { row: 5, col: 1, north: 'h30', west: 'h27', east: 'h28', action: 'feedTheKraken', supply: true },
-  'h25': { row: 5, col: 3, north: 'victory_sailor', west: 'h28', east: 'victory_sailor', supply: true },
-  // r6
-  'h26': { row: 6, col: -2, north: 'victory_pirate', west: 'victory_pirate', east: 'h29', supply: true },
-  'h27': { row: 6, col: 0, north: 'h31', west: 'h29', east: 'h30', action: 'feedTheKraken', supply: true },
-  'h28': { row: 6, col: 2, north: 'victory_sailor', west: 'h30', east: 'victory_sailor', supply: true },
-  'h29': { row: 6, col: -1, north: 'victory_pirate', west: 'victory_pirate', east: 'h31', supply: true },
-  'h30': { row: 6, col: 1, north: 'victory_sailor', west: 'h31', east: 'victory_sailor', supply: true },
-  // r7（北端海妖）
-  'h31': { row: 7, col: 0, north: 'victory_cult', west: 'victory_cult', east: 'victory_cult', supply: true },
-};
 
-// ============ 快航程（5-7人，22格 + 3胜利终点，无补给线） ============
-// 来源：pics/short.jpeg 逐格转录；行动格 3舱搜 2献祭；起点在南。
-const QUICK_INIT: Record<string, HexInit> = {
-  // r1（南端起点港）
-  'h1_0': { row: 1, col: 0, north: 'h3_0', west: 'h2_-1', east: 'h2_1' },
-  // r2
-  'h2_-1': { row: 2, col: -1, north: 'h3_-2', west: 'h3_-2', east: 'h3_0' },
-  'h2_1': { row: 2, col: 1, north: 'h4_1', west: 'h3_0', east: 'h3_2' },
-  // r3
-  'h3_-2': { row: 3, col: -2, north: 'h5_-2', west: 'victory_pirate', east: 'h4_-1' },
-  'h3_0': { row: 3, col: 0, north: 'h5_0', west: 'h4_-1', east: 'h4_1' },
-  'h3_2': { row: 3, col: 2, north: 'h4_1', west: 'h4_1', east: 'victory_sailor' },
-  // r4
-  'h4_-1': { row: 4, col: -1, north: 'h6_-1', west: 'h5_-2', east: 'h5_0', action: 'cabinSearch' },
-  'h4_1': { row: 4, col: 1, north: 'h6_1', west: 'h5_0', east: 'h5_2', action: 'cabinSearch' },
-  // r5
-  'h5_-2': { row: 5, col: -2, north: 'h7_-2', west: 'h6_-3', east: 'h6_-1', action: 'cabinSearch' },
-  'h5_0': { row: 5, col: 0, north: 'h7_0', west: 'h6_-1', east: 'h6_1' },
-  'h5_2': { row: 5, col: 2, north: 'h7_2', west: 'h6_1', east: 'victory_sailor' },
-  // r6
-  'h6_-3': { row: 6, col: -3, north: 'victory_pirate', west: 'victory_pirate', east: 'h7_-2' },
-  'h6_-1': { row: 6, col: -1, north: 'h8_-1', west: 'h7_-2', east: 'h7_0' },
-  'h6_1': { row: 6, col: 1, north: 'h8_1', west: 'h7_0', east: 'h7_2' },
-  // r7
-  'h7_-2': { row: 7, col: -2, north: 'victory_pirate', west: 'victory_pirate', east: 'h8_-1' },
-  'h7_0': { row: 7, col: 0, north: 'victory_cult', west: 'h8_-1', east: 'h8_1' },
-  'h7_2': { row: 7, col: 2, north: 'victory_sailor', west: 'h8_1', east: 'victory_sailor' },
-  // r8（献祭海妖）
-  'h8_-1': { row: 8, col: -1, north: 'h9_-1', west: 'victory_pirate', east: 'h9_0', action: 'feedTheKraken' },
-  'h8_1': { row: 8, col: 1, north: 'h9_1', west: 'h9_0', east: 'victory_sailor', action: 'feedTheKraken' },
-  // r9（北端）
-  'h9_-1': { row: 9, col: -1, north: 'victory_pirate', west: 'victory_pirate', east: 'h9_0' },
-  'h9_0': { row: 9, col: 0, north: 'victory_cult', west: 'h9_-1', east: 'h9_1' },
-  'h9_1': { row: 9, col: 1, north: 'victory_cult', west: 'h9_0', east: 'victory_sailor' },
-};
+// ============================================================
+// 快航程地图（Quick Journey, 5-7 人）
+// 依据用户提供的官方地图照片（pics/short.jpeg）逐格转录：
+// 11 行晶格、22 格；行动格 3×舱搜 + 2×献祭（与规则书组件数一致）；
+// 无补给线、无鞭刑/割舌。船从南部起点出发。
+// 坐标：row 南→北；col：整数行 -1/0/+1，交错行 ±0.5。
+// ============================================================
 
-const LONG_MAP: GameMap = {
-  id: 'long',
-  nameZh: '长航程',
-  hexes: buildMap(LONG_INIT),
-  startHexId: 'h1',
-  dataStatus: 'unverified',
-};
+type QHexInit = { id: string; row: number; col: number; n?: string; w?: string; e?: string; action?: MapHex['action'] };
 
-const QUICK_MAP: GameMap = {
-  id: 'quick',
-  nameZh: '快航程',
-  hexes: buildMap(QUICK_INIT),
-  startHexId: 'h1_0',
-  dataStatus: 'unverified',
-};
+const Q_V_P = 'victory_pirate';
+const Q_V_S = 'victory_sailor';
+const Q_V_C = 'victory_cult';
 
+const Q_NODES: QHexInit[] = [
+  // row 1（最南）
+  { id: 'q1',  row: 1,   col: 0,  n: 'q3c', w: 'q2',  e: 'q2b' },
+  // row 1.5
+  { id: 'q2',  row: 1.5, col: -0.5, n: 'q4', w: 'q3', e: 'q3' },
+  { id: 'q2b', row: 1.5, col: 0.5,  n: 'q4b', w: 'q3', e: 'q3b' },
+  // row 2
+  { id: 'q3',  row: 2,   col: -1,  n: 'q5',  w: Q_V_P, e: 'q4' },
+  { id: 'q3b', row: 2,   col: 1,   n: 'q5b', w: 'q4b', e: Q_V_S },
+  { id: 'q3c', row: 2,   col: 0,   n: 'q6',  w: 'q4',  e: 'q4b' },
+  // row 2.5（舱搜）
+  { id: 'q4',  row: 2.5, col: -0.5, n: 'q6', w: 'q5', e: 'q5b', action: 'cabinSearch' },
+  { id: 'q4b', row: 2.5, col: 0.5,  n: 'q6b', w: 'q5b', e: 'q5c', action: 'cabinSearch' },
+  // row 3（舱搜 / 城堡 / 右）
+  { id: 'q5',  row: 3,   col: -1,  n: 'q7',  w: Q_V_P, e: 'q6', action: 'cabinSearch' },
+  { id: 'q5b', row: 3,   col: 0,   n: 'q7b', w: 'q6', e: 'q6b' },
+  { id: 'q5c', row: 3,   col: 1,   n: 'q7c', w: 'q6b', e: Q_V_S },
+  // row 3.5
+  { id: 'q6',  row: 3.5, col: -0.5, n: 'q8', w: 'q7', e: 'q7b' },
+  { id: 'q6b', row: 3.5, col: 0.5,  n: 'q8b', w: 'q7b', e: 'q7c' },
+  // row 4
+  { id: 'q7',  row: 4,   col: -1,  n: Q_V_P, w: Q_V_P, e: 'q8' },
+  { id: 'q7b', row: 4,   col: 0,   n: 'q9',  w: 'q8', e: 'q8b' },
+  { id: 'q7c', row: 4,   col: 1,   n: Q_V_S, w: 'q8b', e: Q_V_S },
+  // row 4.5（献祭海妖）
+  { id: 'q8',  row: 4.5, col: -0.5, n: 'q10', w: Q_V_P, e: 'q9', action: 'feedTheKraken' },
+  { id: 'q8b', row: 4.5, col: 0.5,  n: 'q10b', w: 'q9', e: Q_V_S, action: 'feedTheKraken' },
+  // row 5
+  { id: 'q9',  row: 5,   col: 0,   n: 'q11', w: 'q10', e: 'q10b' },
+  // row 5.5
+  { id: 'q10',  row: 5.5, col: -0.5, n: Q_V_C, w: Q_V_C, e: 'q11' },
+  { id: 'q10b', row: 5.5, col: 0.5,  n: Q_V_C, w: 'q11', e: Q_V_S },
+  // row 6（北：邪教胜利）
+  { id: 'q11', row: 6,   col: 0,   n: Q_V_C, w: Q_V_C, e: Q_V_C },
+];
+
+function buildQuickMap(): GameMap {
+  const hexes: Record<string, MapHex> = {};
+  for (const nd of Q_NODES) {
+    hexes[nd.id] = {
+      id: nd.id,
+      row: nd.row,
+      col: nd.col,
+      exits: {
+        north: nd.n ?? Q_V_C,
+        west: nd.w ?? Q_V_P,
+        east: nd.e ?? Q_V_S,
+      },
+      action: nd.action,
+    };
+  }
+  return {
+    id: 'quick',
+    nameZh: '短航程（5-7人）',
+    hexes,
+    startHexId: 'q1',
+    dataStatus: 'unverified',
+  };
+}
+
+
+let _longMap: GameMap | null = null;
+let _quickMap: GameMap | null = null;
 export function getLongMap(): GameMap {
-  return LONG_MAP;
+  if (!_longMap) _longMap = buildLongMap();
+  return _longMap;
 }
-
 export function getQuickMap(): GameMap {
-  return QUICK_MAP;
+  if (!_quickMap) _quickMap = buildQuickMap();
+  return _quickMap;
 }
 
-export function getMap(mapId: 'quick' | 'long'): GameMap {
-  return mapId === 'quick' ? QUICK_MAP : LONG_MAP;
+export function getMap(id: 'quick' | 'long'): GameMap {
+  if (id === 'quick') return getQuickMap();
+  return getLongMap();
 }
