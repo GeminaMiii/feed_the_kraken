@@ -15,17 +15,25 @@
 2. 一个已托管在 Cloudflare 的域名（如果没有域名，可使用下方的快速试用模式）。
 
 ### 快速试用（无需域名，5分钟，临时地址）
+
+一键脚本（推荐）：
+- `deploy/public_on.bat` —— 双击开启：自动检查本机服务器，建立隧道并在窗口显示
+  `https://xxxx.trycloudflare.com` 公网地址，发给朋友即可。**关闭窗口=关闭公网入口**。
+- `deploy/public_off.bat` —— 双击关闭公网（不影响本机/局域网访问）。
+
+手动方式（等效）：
 ```bash
 # 1. 下载 cloudflared（Windows）
 #    https://github.com/cloudflare/cloudflared/releases 下载 cloudflared-windows-amd64.exe
+#    放到 deploy/ 目录并改名为 cloudflared.exe
 
 # 2. 服务器启动后，另开一个命令行窗口：
-cloudflared-windows-amd64.exe tunnel --url http://localhost:3000
+cloudflared.exe tunnel --url http://localhost:3000 --no-autoupdate
 
 # 3. 终端会输出一个 https://xxxx.trycloudflare.com 地址
 #    把这个地址发给朋友即可联机（HTTPS 自动配置，WebSocket 原生支持）。
 ```
-限制：临时地址每次重启会变化，仅用于快速体验。
+限制：临时地址每次开启都会变化，仅用于快速体验。
 
 ### 正式固定域名
 ```bash
