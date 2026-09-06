@@ -7,7 +7,7 @@ packages/*/dist/
 *.tsbuildinfo
 
 # ===== 运行时数据（含对局存档与会话凭据哈希，严禁上传）=====
-./data/
+data/
 *.db
 *.db-wal
 *.db-shm
