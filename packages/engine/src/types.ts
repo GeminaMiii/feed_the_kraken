@@ -167,6 +167,7 @@ export type PendingKind =
   | 'tiePick'
   | 'chooseCard'
   | 'navigatorChoose'
+  | 'captainReveal'
   | 'emergencyNavigator'
   | 'choosePlayer'
   | 'floggingSelfDeclare'
@@ -243,6 +244,10 @@ export interface GameState {
   navDiscard: string[];
   recentDiscards: string[]; // 最近3张弃牌（美人鱼用）
   cultRitual: CultRitualState;
+  /** Players converted during play; initial 11-player cultist has no leader knowledge. */
+  convertedCultists: number[];
+  /** Opening pirate seats. Kept as private memory so an unconverted pirate still trusts a converted former teammate. */
+  initialPirateSeats?: number[];
   // 状态机
   stage: string; // 主阶段标识
   pending: PendingChoice[];
@@ -278,6 +283,7 @@ export type Command =
   | { type: 'tiePick'; seat: number }
   | { type: 'chooseCard'; cardId: string }
   | { type: 'navigatorAction'; action: 'discard'; cardId: string } | { type: 'navigatorAction'; action: 'jumpShip' }
+  | { type: 'revealNavigation' }
   | { type: 'choosePlayer'; seat: number }
   | { type: 'floggingDeclare'; declares: 'sailor' | 'pirate' | 'cult' }
   | { type: 'allocateGuns'; alloc: Record<number, number> }
@@ -305,7 +311,7 @@ export interface ViewPlayer {
   isCaptain: boolean;
   isLieutenant: boolean;
   isNavigator: boolean;
-  faction: Faction | null; // 仅本人或已公开时非 null
+  faction: Faction | null; // 本人、已公开，或依规则互认/记忆的阵营；其余为 null
   characterId: string | null; // 仅本人
   characterRevealedSelf: boolean;
 }

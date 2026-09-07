@@ -10,6 +10,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // The temporary trycloudflare host is generated per session. Allow it so
+    // remote phone previews are not rejected by Vite's host check.
+    allowedHosts: true,
     proxy: {
       '/api': 'http://localhost:3000',
       '/socket.io': { target: 'http://localhost:3000', ws: true },

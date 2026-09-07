@@ -41,11 +41,13 @@ function cardSum(state: GameState): number {
       : ['navCaptainDiscard', 'navLieutenantDiscard'].includes(state.stage)
         ? capRem + ltRem
         : 0;
-  // playedCardThisRound 即船长简历（resumeCount 已计入），不重复计
+  // 领航员已选定但船长尚未公开时，这张牌既不在日志也尚未计入简历。
+  const awaitingCaptainReveal = state.stage === 'navCaptainReveal' && state.playedCardThisRound ? 1 : 0;
   return (
     state.navDeck.length +
     state.navDiscard.length +
     handsLive +
+    awaitingCaptainReveal +
     state.players.reduce((a, p) => a + p.resumeCount, 0)
   );
 }
@@ -164,6 +166,10 @@ function handlePending(state: GameState, rnd: SeededRandom, p: { kind: string; a
       }
       const cards = (p.data.cards as string[]) ?? [];
       if (cards.length > 0 && tryCommand(state, actor, { type: 'navigatorAction', action: 'discard', cardId: rnd.pick(cards) })) return;
+      break;
+    }
+    case 'captainReveal': {
+      if (tryCommand(state, actor, { type: 'revealNavigation' })) return;
       break;
     }
     case 'emergencyNavigator': {
