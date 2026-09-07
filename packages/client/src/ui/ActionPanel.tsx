@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import type { PlayerView, Command } from '@ftk/engine';
 import { CHARACTER_MAP, NAV_CARD_MAP, DIRECTION_ZH, NAV_TYPE_ZH } from '@ftk/engine';
 import type { ViewPending } from '@ftk/engine';
-import { sendCommand } from '../api';
+import { CardFace, CardZoom } from './cards';
+import { appointmentCandidates, cardChoice, convertibleCandidates, gunBounds } from './actionChoices';
 
 export const cardNameZh = (id: string) => {
   const c = NAV_CARD_MAP[id];
@@ -35,7 +36,7 @@ export const ActionPanel: React.FC<Props> = ({ view, onCommand, onError }) => {
     <div className="panel">
       <div className="panel-title">🎯 你的行动</div>
       {myPending ? (
-        <PendingUI key={myPending.id} pending={myPending} view={view} onCommand={onCommand} onError={onError} />
+        <PendingUI key={`${view.you.seatId}:${myPending.id}:${myPending.kind}:${JSON.stringify(myPending.data.cards ?? [])}`} pending={myPending} view={view} onCommand={onCommand} onError={onError} />
       ) : hasWindow ? (
         <WindowUI view={view} onCommand={onCommand} onError={onError} />
       ) : waitingOther ? (
@@ -90,26 +91,29 @@ const WindowUI: React.FC<Props> = ({ view, onCommand, onError }) => {
     }
   };
   return (
-    <div>
-      <div className="hint">📢 角色窗口：你可以亮出角色牌发动效果，或选择通过。</div>
-      {myOpt && (
+    <div className="activation-decision">
+      <div className="hint">📢 是否在当前时机亮出自己的角色身份？阵营牌与角色牌是两套不同的信息。</div>
+      <div className="activation-choice-row">
         <button
-          disabled={busy}
-          className="btn primary"
-          onClick={() => run({ type: 'activateCharacter', characterId: myOpt.characterId })}
+          disabled={busy || !myOpt || view.youPassedWindow}
+          className={`btn activation-choice ${myOpt && !view.youPassedWindow ? 'available' : ''}`}
+          onClick={() => myOpt && run({ type: 'activateCharacter', characterId: myOpt.characterId })}
         >
-          亮出「{CHARACTER_MAP[myOpt.characterId]?.nameZh}」
+          亮出自己的身份
         </button>
-      )}
+        <button
+          disabled={busy || !myOpt || view.youPassedWindow}
+          className={`btn activation-choice ${myOpt && !view.youPassedWindow ? 'available' : ''}`}
+          onClick={() => run({ type: 'pass' })}
+        >
+          不亮自己的身份
+        </button>
+      </div>
       {myOpt && CHARACTER_MAP[myOpt.characterId] && (
-        <div className="card-text">{CHARACTER_MAP[myOpt.characterId].textZh}</div>
+        <div className="card-text">当前可亮出：{CHARACTER_MAP[myOpt.characterId].nameZh}。{CHARACTER_MAP[myOpt.characterId].textZh}</div>
       )}
-      {!view.youPassedWindow && (
-        <button disabled={busy} className="btn" onClick={() => run({ type: 'pass' })}>
-          通过
-        </button>
-      )}
-      {view.youPassedWindow && <div className="hint">已通过，等待其他玩家…</div>}
+      {!myOpt && <div className="hint small">当前时机不能亮出你的角色牌，无需操作，系统已自动跳过。</div>}
+      {view.youPassedWindow && myOpt && <div className="hint small">你已作出选择，正在等待其他玩家。</div>}
     </div>
   );
 };
@@ -152,8 +156,7 @@ function candidatesFor(view: PlayerView, pending: ViewPending): number[] {
     case 'navTeamMember':
       return [cap, lt, view.navigator].filter((s) => s >= 0);
     case 'convertible':
-      // 客户端无法知道谁可皈依（舱搜/鞭刑是隐藏状态），列出所有非邪教可能者，交服务端校验
-      return alive.filter((p) => p.seatId !== cap).map((p) => p.seatId);
+      return convertibleCandidates(view);
     case 'tieCandidates':
       return ((data.candidates as number[]) ?? []).filter((s) => s !== me);
     default:
@@ -170,6 +173,11 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
   const [busy, setBusy] = useState(false);
   const [selLt, setSelLt] = useState<number | null>(null);
   const [alloc, setAlloc] = useState<Record<number, number>>({});
+  const [selectedCard, setSelectedCard] = useState<string | null>(null);
+  const [zoomCard, setZoomCard] = useState<string | null>(null);
+  const [confirmJump, setConfirmJump] = useState(false);
+  const [showCards, setShowCards] = useState(false);
+  const [gunCount, setGunCount] = useState<number | null>(null);
   const run = async (c: Command) => {
     setBusy(true);
     try {
@@ -182,9 +190,53 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
   };
   const data = pending.data as Record<string, unknown>;
 
+  // Never render private pending content for another seat, even if supplied accidentally.
+  if (!pending.mine) return null;
+
+  const cardGallery = (cards: string[], choose = false) => (
+    <>
+      <div className="action-card-row">
+        {cards.map((id) => (
+          <div key={id} className={`card-choice ${selectedCard === id ? 'selected' : ''}`}>
+            <CardFace id={id} />
+            <button className="btn" onClick={() => setZoomCard(id)} aria-label={`放大查看 ${cardNameZh(id)}`}>放大查看</button>
+            {choose && <button disabled={busy || confirmJump} className="btn" aria-pressed={selectedCard === id} onClick={() => setSelectedCard(id)}>
+              {cards.length === 2 ? '保留此牌' : '弃掉此牌'}
+            </button>}
+          </div>
+        ))}
+      </div>
+      {zoomCard && <CardZoom id={zoomCard} onClose={() => setZoomCard(null)} />}
+    </>
+  );
+
+  const cardSelection = (navigator: boolean) => {
+    const cards = (data.cards as string[]) ?? view.yourHand;
+    const choice = cardChoice(cards, selectedCard, navigator);
+    return <>
+      <div className="hint">{cards.length === 2
+        ? navigator ? '选择要执行的保留牌，再确认弃掉另一张。' : '选择要放入航海日志的保留牌，再确认弃掉另一张。'
+        : navigator ? '航海日志有多张牌：每次选择并确认弃掉一张，直到剩下一张执行。' : '走私者多抽牌：选择并确认弃掉一张，其余牌全部放入航海日志。'}</div>
+      <button className="btn primary reveal-card-action" disabled={busy || confirmJump} onClick={() => setShowCards(true)}>
+        {cards.length === 2 ? '查看两张卡牌并选择' : '查看可选卡牌'}
+      </button>
+      {showCards && <div className="card-action-overlay" role="dialog" aria-modal="true" aria-label="选择导航卡" tabIndex={-1} onKeyDown={(e) => { if (e.key === 'Escape') setShowCards(false); }} onClick={() => setShowCards(false)}>
+        <div className="card-action-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-heading"><div><div className="modal-kicker">当前操作 · 私密卡牌</div><div className="modal-title">请选择要处理的卡牌</div></div><button className="btn small" onClick={() => setShowCards(false)}>取消</button></div>
+          {cardGallery(cards, true)}
+          {choice && <div className="selection-summary" aria-live="polite">保留：{choice.kept.map(cardNameZh).join('、')}；弃掉：{cardNameZh(choice.discarded)}。</div>}
+          <button className="btn primary" disabled={busy || !choice || confirmJump} onClick={() => choice && run(choice.command)}>
+            {navigator && choice?.kept.length === 1 ? '确认保留并执行（弃掉另一张）' : cards.length === 2 ? '确认保留（弃掉另一张）' : '确认弃掉所选牌'}
+          </button>
+        </div>
+      </div>}
+    </>;
+  };
+
   const ChoosePlayerUI = ({ candidates, label }: { candidates: number[]; label: string }) => (
     <div>
       <div className="hint">{label}</div>
+      {candidates.length === 0 && <div className="hint small">当前没有可选目标，请稍候或联系房主。</div>}
       <div className="btns">
         {candidates.map((s) => {
           const p = view.players.find((q) => q.seatId === s)!;
@@ -202,18 +254,15 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
   switch (pending.kind) {
     case 'appointTeam': {
       const navigatorOnly = data.navigatorOnly === true;
-      const eligible = view.players.filter(
-        (p) => !p.eliminated && !p.offDuty && p.seatId !== view.captain && p.seatId !== view.lieutenant,
-      );
-      const eligibleLt = view.players.filter(
-        (p) => !p.eliminated && !p.offDuty && p.seatId !== view.captain && p.seatId !== view.navigator,
-      );
+      const eligible = appointmentCandidates(view, 'navigator');
+      const eligibleLt = appointmentCandidates(view, 'lieutenant');
       if (navigatorOnly) {
         return (
-          <ChoosePlayerUI
-            candidates={eligible.map((p) => p.seatId)}
-            label="请任命领航员（副手已定）"
-          />
+          <div>
+            <div className="hint">请任命领航员（副手已定）</div>
+            <div className="btns">{eligible.map((p) => <button key={p.seatId} disabled={busy} className="btn primary"
+              onClick={() => run({ type: 'appoint', lieutenant: view.lieutenant, navigator: p.seatId })}>{p.name}</button>)}</div>
+          </div>
         );
       }
       return (
@@ -237,7 +286,7 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
                   className="btn primary"
                   onClick={() => run({ type: 'appoint', lieutenant: selLt!, navigator: p.seatId })}
                 >
-                  {selLt === null ? '（先选副手）' : `任命 ${view.players[selLt].name} + ${p.name}`}
+                  {selLt === null ? '（先选副手）' : `任命 ${view.players.find((q) => q.seatId === selLt)?.name} + ${p.name}`}
                 </button>
               ))}
           </div>
@@ -247,26 +296,21 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
     case 'consultantLieutenant':
       return (
         <ChoosePlayerUI
-          candidates={view.players.filter((p) => !p.eliminated && p.seatId !== view.captain && p.seatId !== view.navigator).map((p) => p.seatId)}
+          candidates={appointmentCandidates(view, 'lieutenant').map((p) => p.seatId)}
           label="顾问：指定新任副手"
         />
       );
     case 'mutinySubmit': {
-      const max = view.you.guns ?? 0;
-      const forcedMin = 0; // 若被煽动，服务端会拒绝并提示
-      const [cnt, setCnt] = React.useState(0);
-      const [touched, setTouched] = React.useState(false);
-      React.useEffect(() => {
-        if (!touched) setCnt(Math.min(max, forcedMin));
-      }, [max, touched]);
+      const { min, max } = gunBounds(view, pending);
+      const cnt = Math.max(min, Math.min(max, gunCount ?? min));
       return (
         <div>
-          <div className="hint">🤫 忠诚质询：秘密选择要亮出的枪数（0 至全部 {max} 把）。所有人都提交后同时揭示。</div>
+          <div className="hint">🤫 忠诚质询：秘密选择要亮出的枪数（{min} 至 {max} 把）。所有人都提交后同时揭示。</div>
           {view.mutinyPublic.threshold > 0 && <div className="hint small">成功哗变需要 {view.mutinyPublic.threshold} 把枪（总表决为公开信息，但每人的选择保密）。</div>}
           <div className="stepper">
-            <button disabled={busy || cnt <= 0} onClick={() => { setTouched(true); setCnt(cnt - 1); }}>−</button>
+            <button disabled={busy || cnt <= min} onClick={() => setGunCount(cnt - 1)}>−</button>
             <span className="count">{cnt}</span>
-            <button disabled={busy || cnt >= max} onClick={() => { setTouched(true); setCnt(cnt + 1); }}>＋</button>
+            <button disabled={busy || cnt >= max} onClick={() => setGunCount(cnt + 1)}>＋</button>
           </div>
           <button
             disabled={busy}
@@ -294,52 +338,42 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
         return (
           <div>
             <div className="hint">{pending.reasonZh}？</div>
-            <div className="btns">
-              <button disabled={busy} className="btn primary" onClick={() => run({ type: 'chooseCard', cardId: '__redraw__' })}>
-                弃掉重抽
-              </button>
-              <button disabled={busy} className="btn" onClick={() => run({ type: 'pass' })}>
-                保留
-              </button>
-            </div>
+            <button className="btn primary" onClick={() => setShowCards(true)}>查看刚抽到的导航卡</button>
+            {showCards && <div className="card-action-overlay" role="dialog" aria-modal="true" tabIndex={-1} onKeyDown={(e) => { if (e.key === 'Escape') setShowCards(false); }} onClick={() => setShowCards(false)}><div className="card-action-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-heading"><div className="modal-title">档案员 · 检查导航卡</div><button className="btn small" onClick={() => setShowCards(false)}>取消</button></div>
+              {cardGallery(view.yourHand)}
+              <div className="btns"><button disabled={busy} className="btn primary" onClick={() => run({ type: 'chooseCard', cardId: '__redraw__' })}>弃掉并重抽</button><button disabled={busy} className="btn" onClick={() => run({ type: 'pass' })}>保留当前卡牌</button></div>
+            </div></div>}
           </div>
         );
       }
-      const cards = (data.cards as string[]) ?? view.yourHand;
       return (
         <div>
-          <div className="hint">{pending.reasonZh}</div>
-          <div className="btns">
-            {cards.map((c) => (
-              <button key={c} disabled={busy} className="btn" onClick={() => run({ type: 'chooseCard', cardId: c })}>
-                {cardNameZh(c)}
-              </button>
-            ))}
-          </div>
+          {cardSelection(false)}
         </div>
       );
     }
     case 'navigatorChoose': {
-      const cards = (data.cards as string[]) ?? view.yourHand;
       return (
         <div>
-          <div className="hint">🧭 你是领航员：查看两张牌后选择。弃掉一张，另一张将被执行。你也可以拒令跳海（立即出局，触发紧急航海）。</div>
-          <div className="hand">
-            {cards.map((c) => (
-              <div key={c} className="navcard">
-                <div className="navcard-name">{cardNameZh(c)}</div>
-                <button disabled={busy} className="btn primary" onClick={() => run({ type: 'navigatorAction', action: 'discard', cardId: c })}>
-                  弃掉这张（执行另一张）
-                </button>
-              </div>
-            ))}
-          </div>
-          <button disabled={busy} className="btn danger" onClick={() => run({ type: 'navigatorAction', action: 'jumpShip' })}>
-            拒绝执行命令——跳海（不可撤销！）
-          </button>
+          {cardSelection(true)}
+          {!confirmJump ? <button disabled={busy} className="btn danger" onClick={() => setConfirmJump(true)}>拒令跳海…</button> : (
+            <div className="selection-summary" role="alert">
+              <p>跳海会立即出局，弃掉全部导航牌，并触发紧急航海。此操作不可撤销；邪教主跳海也不会获胜。</p>
+              <button disabled={busy} className="btn" onClick={() => setConfirmJump(false)}>取消，继续选牌</button>
+              <button disabled={busy} className="btn danger" onClick={() => run({ type: 'navigatorAction', action: 'jumpShip' })}>确认跳海并永久出局</button>
+            </div>
+          )}
         </div>
       );
     }
+    case 'captainReveal':
+      return (
+        <div className="captain-reveal-action">
+          <div className="hint">副手与领航员已经完成秘密决策。最终卡牌仍在关闭的航海日志中，只有你点击后才会向全员公开并执行。</div>
+          <button disabled={busy} className="btn primary big" onClick={() => run({ type: 'revealNavigation' })}>打开航海日志并执行导航牌</button>
+        </div>
+      );
     case 'floggingSelfDeclare': {
       const z = { sailor: '水手（蓝）', pirate: '海盗（红）', cult: '邪教（黄/绿）' };
       return (
@@ -383,15 +417,13 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
     case 'telescopeDecision':
       return (
         <div>
-          <div className="hint">{pending.reasonZh}</div>
-          <div className="btns">
-            <button disabled={busy} className="btn" onClick={() => run({ type: 'telescopeDecision', discard: true })}>
-              面朝下弃入深海
-            </button>
-            <button disabled={busy} className="btn" onClick={() => run({ type: 'telescopeDecision', discard: false })}>
-              放回牌堆顶
-            </button>
-          </div>
+          <div className="hint">望远镜已经看到牌堆顶，但卡面仍保持私密。</div>
+          <button className="btn primary" onClick={() => setShowCards(true)}>查看望远镜中的导航卡</button>
+          {showCards && <div className="card-action-overlay" role="dialog" aria-modal="true" tabIndex={-1} onKeyDown={(e) => { if (e.key === 'Escape') setShowCards(false); }} onClick={() => setShowCards(false)}><div className="card-action-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-heading"><div className="modal-title">望远镜 · 牌堆顶</div><button className="btn small" onClick={() => setShowCards(false)}>取消</button></div>
+            {typeof data.cardPreview === 'string' && cardGallery([data.cardPreview])}
+            <div className="btns"><button disabled={busy} className="btn" onClick={() => run({ type: 'telescopeDecision', discard: true })}>面朝下弃入深海</button><button disabled={busy} className="btn primary" onClick={() => run({ type: 'telescopeDecision', discard: false })}>放回牌堆顶</button></div>
+          </div></div>}
         </div>
       );
     case 'instigatorAnswer':

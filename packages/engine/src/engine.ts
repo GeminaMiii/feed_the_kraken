@@ -198,6 +198,13 @@ function handleCommand(state: GameState, rng: Rng, seatId: number, cmd: Command)
     case 'navigatorChoose':
       handleNavigatorCommand(state, rng, seatId, cmd);
       break;
+    case 'captainReveal':
+      if (cmd.type !== 'revealNavigation') throw badCmd();
+      if (seatId !== state.captain) throw new RuleError('NOT_YOUR_TURN', '只有船长可以公开并执行最终导航牌');
+      state.pending.pop();
+      pushLog(state, `船长 ${nameOf(state, seatId)} 打开航海日志，准备公开最终导航牌。`);
+      state.stage = 'resolveNavCard';
+      break;
     case 'emergencyNavigator': {
       if (cmd.type !== 'choosePlayer') throw badCmd();
       const target = seatOf(state, cmd.seat);
@@ -366,6 +373,11 @@ function characterUsable(state: GameState, p: PlayerState, cid: string): boolean
       return alivePlayers(state).some((q) => q.characterId && q.characterId !== 'chr_captain');
     case 'chr_lookout':
       return state.navDeck.length >= 1 || state.navDiscard.length >= 1;
+    case 'chr_peacemaker':
+    case 'chr_troublemaker':
+      // 目标过滤器 mutinyRevealed 要求目标本次揭示了枪；无人出枪时不可发动，
+      // 否则会推出零合法候选的 choosePlayer 挂起且无法 pass，导致死锁。
+      return Object.values(state.mutiny.submissions).some((v) => (v ?? 0) > 0);
     default:
       return true;
   }
@@ -790,6 +802,8 @@ function handleChoosePlayer(state: GameState, rng: Rng, pending: PendingChoice, 
     case 'conversionToCult':
       if (!isConvertible(target)) throw new RuleError('BAD_TARGET', '该玩家不可被皈依');
       target.faction = 'cultist';
+      state.convertedCultists ??= [];
+      if (!state.convertedCultists.includes(target.seatId)) state.convertedCultists.push(target.seatId);
       pushLog(state, '皈依邪教：一名玩家被秘密吸收进邪教。');
       pushLog(state, '你已成为邪教徒！从此与邪教主同生共死。', target.seatId);
       pushLog(state, `皈依完成：你的新信徒是 ${nameOf(state, target.seatId)}。`, findCultLeader(state));
@@ -976,6 +990,14 @@ export function advance(state: GameState, rng: Rng) {
       case 'navNavigator':
         prepareLogbook(state, rng);
         continue;
+      case 'navCaptainReveal':
+        pushPending(state, {
+          kind: 'captainReveal',
+          actorSeat: state.captain,
+          data: {},
+          reasonZh: '领航员已完成选择：请船长公开并执行最终导航牌',
+        });
+        return;
       case 'resolveNavCard':
         resolveNavCard(state, rng);
         continue;
@@ -1376,7 +1398,7 @@ function prepareLogbook(state: GameState, rng: Rng) {
     pushLog(state, '无有效领航员：随机弃掉一张导航牌。');
     state.playedCardThisRound = nav.logbook[0];
     nav.logbook = [];
-    state.stage = 'resolveNavCard';
+    state.stage = 'navCaptainReveal';
   }
 }
 
@@ -1417,7 +1439,7 @@ function handleNavigatorCommand(state: GameState, rng: Rng, seatId: number, cmd:
   state.playedCardThisRound = nav.logbook[0];
   nav.logbook = [];
   pushLog(state, '领航员做出了抉择：船长即将揭示最终导航牌。');
-  state.stage = 'resolveNavCard';
+  state.stage = 'navCaptainReveal';
 }
 
 // ============ 导航牌结算 ============

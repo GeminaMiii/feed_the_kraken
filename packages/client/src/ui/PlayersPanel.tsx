@@ -1,114 +1,83 @@
 import React, { useState } from 'react';
-import type { PlayerView, ViewPlayer } from '@ftk/engine';
-import { CHARACTER_MAP, NAV_CARD_MAP, NAV_TYPE_ZH, DIRECTION_ZH } from '@ftk/engine';
-import { characterFaceUrl } from './characters';
+import type { Faction, PlayerView, ViewPlayer } from '@ftk/engine';
+import { CHARACTER_MAP } from '@ftk/engine';
+import { CardFace, CardZoom } from './cards';
 
-const cardNameZh = (id: string) => {
-  const c = NAV_CARD_MAP[id];
-  return c ? `${DIRECTION_ZH[c.direction]}·${NAV_TYPE_ZH[c.type]}` : id;
-};
-
-const FACTION_ZH: Record<string, string> = {
-  sailor: '水手',
-  pirate: '海盗',
-  cultLeader: '邪教主',
-  cultist: '邪教徒',
-};
-
+type FactionMark = Faction | 'cult';
+const FACTION_ZH: Record<FactionMark, string> = { sailor: '水手', pirate: '海盗', cult: '邪教', cultLeader: '邪教主', cultist: '邪教徒' };
 const NOT_ZH: Record<string, string> = { sailor: '水手', pirate: '海盗', cult: '邪教', cultLeader: '邪教主', cultist: '邪教徒' };
 
-export const PlayersPanel: React.FC<{ view: PlayerView }> = ({ view }) => {
-  const [inspecting, setInspecting] = useState<{ name: string; cid: string } | null>(null);
-  const def = inspecting ? CHARACTER_MAP[inspecting.cid] : null;
-  return (
-    <div className="players">
-      {view.players.map((p) => (
-        <PlayerCard
-          key={p.seatId}
-          p={p}
-          view={view}
-          onInspectCharacter={(cid) => setInspecting({ name: p.name, cid })}
-        />
-      ))}
-      {inspecting && def && (
-        <div className="modal-mask" onClick={() => setInspecting(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">
-              {inspecting.name} 的角色 · {def.nameZh}
-            </div>
-            <div className="char-body">
-              {characterFaceUrl(inspecting.cid) && (
-                <img className="char-face" src={characterFaceUrl(inspecting.cid)!} alt={def.nameZh} />
-              )}
-              <div className="card-text">{def.textZh}</div>
-            </div>
-            <button className="btn small" onClick={() => setInspecting(null)}>
-              关闭
-            </button>
-          </div>
-        </div>
-      )}
+const FactionCard: React.FC<{ faction: FactionMark | null; revealed: boolean }> = ({ faction, revealed }) => (
+  <div className={`faction-flip ${revealed ? 'is-revealed' : ''}`}>
+    <div className="faction-flip-inner">
+      <div className="faction-card faction-back"><span>⚓</span><small>秘密阵营</small></div>
+      <div className={`faction-card faction-front faction-${faction ?? 'unknown'}`}>
+        <span>{faction === 'pirate' ? '☠' : faction === 'cult' || faction === 'cultLeader' || faction === 'cultist' ? '◉' : '⚓'}</span>
+        <b>{faction ? FACTION_ZH[faction] : '未知'}</b>
+      </div>
     </div>
-  );
+  </div>
+);
+
+export const PlayersPanel: React.FC<{ view: PlayerView }> = ({ view }) => {
+  const [myFactionOpen, setMyFactionOpen] = useState(false);
+  const [zoomCard, setZoomCard] = useState<string | null>(null);
+  const [marks, setMarks] = useState<Record<number, FactionMark | undefined>>({});
+  const [markingSeat, setMarkingSeat] = useState<number | null>(null);
+  const setMark = (seatId: number, mark?: FactionMark) => {
+    setMarks((current) => ({ ...current, [seatId]: mark }));
+    setMarkingSeat(null);
+  };
+  return <div className="players" onClick={() => markingSeat !== null && setMarkingSeat(null)}>
+    {view.players.map((p) => <PlayerCard
+      key={p.seatId} p={p} view={view} myFactionOpen={myFactionOpen}
+      onToggleFaction={() => setMyFactionOpen((v) => !v)} onZoom={setZoomCard}
+      mark={marks[p.seatId]} marking={markingSeat === p.seatId}
+      onOpenMark={(e) => { e.preventDefault(); e.stopPropagation(); if (p.seatId !== view.you.seatId) setMarkingSeat(p.seatId); }}
+      onMark={(mark) => setMark(p.seatId, mark)}
+    />)}
+    {zoomCard && <CardZoom id={zoomCard} onClose={() => setZoomCard(null)} />}
+  </div>;
 };
 
-const PlayerCard: React.FC<{
-  p: ViewPlayer;
-  view: PlayerView;
-  onInspectCharacter: (cid: string) => void;
-}> = ({ p, view, onInspectCharacter }) => {
+interface PlayerCardProps {
+  p: ViewPlayer; view: PlayerView; myFactionOpen: boolean;
+  onToggleFaction: () => void; onZoom: (id: string) => void;
+  mark?: FactionMark; marking: boolean;
+  onOpenMark: (e: React.MouseEvent) => void; onMark: (mark?: FactionMark) => void;
+}
+
+const PlayerCard: React.FC<PlayerCardProps> = ({ p, view, myFactionOpen, onToggleFaction, onZoom, mark, marking, onOpenMark, onMark }) => {
   const isMe = p.seatId === view.you.seatId;
   const teammate = view.you.teammates.includes(p.seatId);
   const dead = p.eliminated;
-  return (
-    <div className={`pcard ${dead ? 'dead' : ''} ${isMe ? 'me' : ''}`}>
-      <div className="prow">
-        <span className="pname">
-          {p.name}
-          {isMe ? '（你）' : ''}
-        </span>
-        <span className="badges">
-          {p.isCaptain && <span className="badge cap">船</span>}
-          {p.isLieutenant && <span className="badge lt">副</span>}
-          {p.isNavigator && <span className="badge nav">航</span>}
-          {p.offDuty && <span className="badge off">停职</span>}
-          {p.noTongue && <span className="badge off">割舌</span>}
-          {!p.connected && <span className="badge discon">离线</span>}
-        </span>
-      </div>
-      <div className="prow small">
-        <span>🔫{p.guns}</span>
-        <span title="作为船长打出的导航牌（公开履历）">📜{p.resumeCount}{p.resumes.length > 0 && ':'}</span>
-        {p.resumes.map((c, i) => (
-          <span key={i} className="badge resume">{cardNameZh(c)}</span>
-        ))}
-        {dead && <span className="dead-tag">{p.eliminationReason === 'overboard' ? '跳海' : '献祭'}出局</span>}
-        {teammate && <span className="badge mate">队友</span>}
-        {p.notFactions.map((f) => (
-          <span key={f} className="badge notf">非{NOT_ZH[f]}</span>
-        ))}
-      </div>
-      <div className="prow small">
-        {p.characterRevealed && p.revealedCharacterId && (
-          <span
-            className="badge chr clickable"
-            title="点击查看技能"
-            onClick={() => onInspectCharacter(p.revealedCharacterId!)}
-          >
-            {CHARACTER_MAP[p.revealedCharacterId]?.nameZh ?? p.revealedCharacterId} ⓘ
-          </span>
-        )}
-        {p.characterRevealed && p.revealedCharacterId && characterFaceUrl(p.revealedCharacterId) && (
-          <img
-            className="pface clickable"
-            src={characterFaceUrl(p.revealedCharacterId)!}
-            alt={CHARACTER_MAP[p.revealedCharacterId]?.nameZh ?? ''}
-            title="点击查看技能"
-            onClick={() => onInspectCharacter(p.revealedCharacterId!)}
-          />
-        )}
-        {isMe && view.you.faction && <span className="badge mefac">{FACTION_ZH[view.you.faction]}</span>}
-      </div>
+  const endFaction = view.result?.factions[p.seatId] ?? null;
+  const faction: FactionMark | null = endFaction ?? p.faction ?? mark ?? null;
+  const factionRevealed = Boolean(endFaction || mark || (!isMe && p.faction)) || (isMe && myFactionOpen);
+  const roleName = p.revealedCharacterId ? CHARACTER_MAP[p.revealedCharacterId]?.nameZh : null;
+  return <article className={`pcard player-board-row ${dead ? 'dead' : ''} ${isMe ? 'me' : ''}`}>
+    <div className="player-summary">
+      <div className="prow"><span className="pname">{p.name}{isMe ? '（你）' : ''}</span><span className="badges">
+        {p.isCaptain && <span className="badge cap">船长</span>}{p.isLieutenant && <span className="badge lt">副手</span>}{p.isNavigator && <span className="badge nav">领航员</span>}
+        {p.offDuty && <span className="badge off">停职</span>}{p.noTongue && <span className="badge off">割舌</span>}{!p.connected && <span className="badge discon">离线</span>}
+      </span></div>
+      <div className="player-stats"><span>枪支 <b>{p.guns}</b></span><span>履历 <b>{p.resumeCount}</b></span>{teammate && <span className="badge mate">队友</span>}{dead && <span className="dead-tag">{p.eliminationReason === 'overboard' ? '跳海' : '献祭'}出局</span>}</div>
+      {roleName && <button className="revealed-role-link" onClick={() => onZoom(p.revealedCharacterId!)}>已亮出角色：{roleName}</button>}
+      {p.resumes.length > 0 && <div className="resume-track" aria-label={`${p.name} 的船长履历`}>
+        {p.resumes.map((id, index) => <button className="resume-token" key={`${id}:${index}`} onClick={() => onZoom(id)} title="点击放大这张船长履历"><CardFace id={id} compact /></button>)}
+      </div>}
+      {p.notFactions.length > 0 && <div className="player-not-factions">{p.notFactions.map((f) => <span key={f} className="badge notf">非{NOT_ZH[f]}</span>)}</div>}
     </div>
-  );
+    <div className="player-card-rail" aria-label={`${p.name} 的阵营牌区`}>
+      <button className="rail-card faction-card-button" onClick={isMe && !endFaction ? onToggleFaction : undefined} onContextMenu={onOpenMark}
+        title={isMe && !endFaction ? '点击翻看自己的秘密阵营牌' : '右键：私下标注你对该玩家阵营的判断'} aria-label={`${p.name} 的阵营牌`}>
+        <FactionCard faction={faction} revealed={factionRevealed} />
+      </button>
+      {marking && <div className="faction-mark-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+        <b>私下标注阵营</b>
+        <button onClick={() => onMark('sailor')}>水手</button><button onClick={() => onMark('pirate')}>海盗</button>
+        <button onClick={() => onMark('cult')}>邪教</button><button onClick={() => onMark(undefined)}>清除标注</button>
+      </div>}
+    </div>
+  </article>;
 };

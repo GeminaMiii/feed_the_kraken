@@ -29,6 +29,7 @@ const STAGE_ZH: Record<string, string> = {
   navCaptainDiscard: '船长弃牌',
   navLieutenantDiscard: '副手弃牌',
   navNavigator: '领航员抉择',
+  navCaptainReveal: '等待船长公开导航牌',
   resolveNavCard: '执行导航牌',
   yellowWindow: '黄牌回合（角色窗口）',
   offDuty: '停职结算',
@@ -38,10 +39,20 @@ const STAGE_ZH: Record<string, string> = {
 
 export const STAGE_LABELS = STAGE_ZH;
 
-export function waitingForText(state: GameState): string {
+function isSecretCultPending(p: PendingChoice): boolean {
+  return p.kind === 'gunsStash' ||
+    (p.kind === 'choosePlayer' && p.data.effect === 'conversionToCult');
+}
+
+export function waitingForText(state: GameState, viewerSeat?: number): string {
   if (state.result) return '对局已结束';
   const pending = state.pending[state.pending.length - 1];
   if (pending && pending.kind !== 'activationWindow') {
+    if (isSecretCultPending(pending)) {
+      return pending.actorSeat === viewerSeat
+        ? `请秘密处理：${pending.reasonZh}`
+        : '等待邪教主进行秘密操作';
+    }
     return `等待 ${seatOf(state, pending.actorSeat).name}：${pending.reasonZh}`;
   }
   if (state.activation) {
@@ -56,7 +67,8 @@ export function waitingForText(state: GameState): string {
       yellowRound: '黄牌回合角色窗口',
       free: '自由窗口',
     };
-    return `角色窗口（${kindZh[state.activation.windowKind] ?? state.activation.windowKind}）：等待 ${notPassed.map((p) => p.name).join('、') || '无人'} 出牌或通过`;
+    void notPassed;
+    return `角色窗口（${kindZh[state.activation.windowKind] ?? state.activation.windowKind}）：等待玩家选择是否亮出身份`;
   }
   return STAGE_ZH[state.stage] ?? state.stage;
 }
@@ -66,19 +78,33 @@ function teammatesOf(state: GameState, seatId: number): number[] {
   const out: number[] = [];
   if (!me.faction) return out;
   if (me.faction === 'pirate') {
-    // 海盗开局互识
-    for (const p of state.players) {
-      if (p.seatId !== seatId && p.faction === 'pirate' && !p.eliminated) out.push(p.seatId);
-    }
-    // 出局海盗是否公开？出局不公开阵营 → 不加入
+    // 海盗保留开局认知：即使原队友后来被秘密感化，未被感化的海盗仍相信原队友。
+    const openingPirates = state.initialPirateSeats ?? state.players.filter((p) => p.faction === 'pirate').map((p) => p.seatId);
+    for (const knownSeat of openingPirates) if (knownSeat !== seatId) out.push(knownSeat);
   }
   if (me.faction === 'cultist') {
-    // 邪教徒知道吸收自己的邪教主
-    for (const p of state.players) {
-      if (p.seatId !== seatId && p.faction === 'cultLeader') out.push(p.seatId);
+    // The 11-player starting cultist is intentionally blind. Only a player
+    // converted by a ritual is told who the cult leader is.
+    if ((state.convertedCultists ?? []).includes(seatId)) {
+      for (const p of state.players) if (p.seatId !== seatId && p.faction === 'cultLeader') out.push(p.seatId);
     }
   }
+  if (me.faction === 'cultLeader') {
+    // 邪教主只自动认识游戏中由自己感化的邪教徒；11 人局初始邪教徒仍不互认。
+    for (const convertedSeat of state.convertedCultists ?? []) if (convertedSeat !== seatId) out.push(convertedSeat);
+  }
   return out;
+}
+
+function knownFactionForViewer(state: GameState, viewerSeat: number, targetSeat: number): Faction | null {
+  const target = seatOf(state, targetSeat);
+  if (viewerSeat === targetSeat) return target.faction;
+  const viewer = state.players.find((p) => p.seatId === viewerSeat);
+  if (!viewer?.faction) return null;
+  if (!teammatesOf(state, viewerSeat).includes(targetSeat)) return null;
+  // 未被感化的海盗所见是其开局认知，而不是秘密改变后的真实阵营。
+  if (viewer.faction === 'pirate' && (state.initialPirateSeats ?? []).includes(targetSeat)) return 'pirate';
+  return target.faction;
 }
 
 export function buildPlayerView(state: GameState, seatId: number): PlayerView {
@@ -91,7 +117,9 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
       connected: true, // 由服务端填充连接状态
       guns: p.guns, // 哗变外为公开信息
       resumeCount: p.resumeCount,
-      offDuty: p.offDuty && state.captain !== p.seatId ? false : p.offDuty,
+      // Stop-work status is public. The captain is not exempt from the status;
+      // the previous conditional accidentally hid every non-captain's marker.
+      offDuty: p.offDuty,
       noTongue: p.noTongue,
       eliminated: p.eliminated,
       eliminationReason: p.eliminationReason,
@@ -103,7 +131,7 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
       isCaptain: state.captain === p.seatId,
       isLieutenant: state.lieutenant === p.seatId,
       isNavigator: state.navigator === p.seatId,
-      faction: p.seatId === seatId ? p.faction : null, // 永不泄露他人阵营
+      faction: knownFactionForViewer(state, seatId, p.seatId),
       characterId: p.seatId === seatId ? p.characterId : null,
       characterRevealedSelf: p.characterRevealed,
     };
@@ -112,14 +140,16 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
   // 待处理选择（过滤 data 中的秘密字段）
   const pendings: ViewPending[] = state.pending
     .filter((p) => p.kind !== 'activationWindow')
-    .map((p) => ({
+    .map((p) => {
+      const secretFromViewer = isSecretCultPending(p) && p.actorSeat !== seatId;
+      return {
       id: p.id,
       kind: p.kind,
       mine: p.actorSeat === seatId,
-      actorSeat: p.actorSeat,
-      reasonZh: p.reasonZh,
-      data: sanitizePendingData(state, p, seatId),
-    }));
+      actorSeat: secretFromViewer ? -1 : p.actorSeat,
+      reasonZh: secretFromViewer ? '等待邪教主进行秘密操作' : p.reasonZh,
+      data: secretFromViewer ? {} : sanitizePendingData(state, p, seatId),
+    }; });
 
   // 激活窗口选项
   let activationOptions: ActivationOption[] = [];
@@ -133,10 +163,10 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
   // 航海手牌
   let yourHand: string[] = [];
   const nav = state.navigation;
-  if (state.captain === seatId && nav.captainCards.length > 0 && !isDiscarded(nav.captainDiscarded, nav.captainCards)) {
-    yourHand = nav.captainCards.slice();
-  } else if (state.lieutenant === seatId && nav.lieutenantCards.length > 0 && !isDiscarded(nav.lieutenantDiscarded, nav.lieutenantCards)) {
-    yourHand = nav.lieutenantCards.slice();
+  if (state.captain === seatId && nav.captainCards.length > 0) {
+    yourHand = nav.captainCards.filter((c) => !(nav.captainDiscarded ?? []).includes(c));
+  } else if (state.lieutenant === seatId && nav.lieutenantCards.length > 0) {
+    yourHand = nav.lieutenantCards.filter((c) => !(nav.lieutenantDiscarded ?? []).includes(c));
   }
   // 领航员：日志中的两张牌仅其本人可见
   let logbookCount = 0;
@@ -192,7 +222,7 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
       threshold: state.mutiny.threshold,
       revealedBySeat: state.mutiny.stage === 'revealed' ? revealSubmissions(state, seatId) : null,
     },
-    waitingFor: waitingForText(state),
+    waitingFor: waitingForText(state, seatId),
   };
   void log;
   return view;
@@ -255,6 +285,15 @@ function computeActivationOptionsForView(state: GameState, seatId: number): Acti
     (def.timing === 'afterReveal' && wk === 'afterReveal') ||
     (def.timing === 'yellowRound' && wk === 'yellowRound' && state.yellowPlayedThisRound);
   if (!timingOk) return [];
+  // 和平使者/捣乱者需要有人出枪才有目标；无人出枪时直接不给出选项，
+  // 让客户端按钮置灰并自动跳过（与引擎 characterUsable 守卫保持一致）。
+  // afterReveal 窗口时出枪数已全员公开，此判断不泄露任何秘密。
+  if (
+    (cid === 'chr_peacemaker' || cid === 'chr_troublemaker') &&
+    !Object.values(state.mutiny.submissions).some((v) => (v ?? 0) > 0)
+  ) {
+    return [];
+  }
   // 详细可用性由服务端在 activate 时校验；此处仅提示
   return [{ seatId, characterId: cid, needsGunCost: def.timing === 'gunCost' }];
 }

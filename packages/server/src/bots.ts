@@ -98,6 +98,8 @@ export function botDecide(view: View, pending: PendingChoice | ViewPending | nul
       if (cards.length === 0) return null;
       return { type: 'navigatorAction', action: 'discard', cardId: cards[0] };
     }
+    case 'captainReveal':
+      return { type: 'revealNavigation' };
     case 'floggingSelfDeclare': {
       const f = view.you.faction;
       const declares = f === 'pirate' ? 'pirate' : f === 'sailor' ? 'sailor' : 'cult';
