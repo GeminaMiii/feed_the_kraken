@@ -83,6 +83,8 @@ export function createGameState(
     navDiscard: [],
     recentDiscards: [],
     cultRitual: { deckOrder: ritualOrder, revealedCount: 0, pendingRitual: null },
+    convertedCultists: [],
+    initialPirateSeats: players.filter((p) => p.faction === 'pirate').map((p) => p.seatId),
     stage: 'roundStart',
     pending: [],
     activation: null,

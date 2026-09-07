@@ -276,6 +276,30 @@ describe('角色效果：哗变相关', () => {
     expect(state.stage).toBe('preDraw');
   });
 
+  // 无人出枪时和平使者不可发动：否则会推出零合法候选的选人挂起且无法 pass，游戏死锁。
+  // 其余座位固定为导师（anytime 时机），保证 afterReveal 窗口确定保持开放。
+  it('和平使者：无人出枪时不可发动，不再死锁', () => {
+    const others: Record<number, string> = { 0: 'chr_mentor', 1: 'chr_mentor', 2: 'chr_mentor', 4: 'chr_mentor', 5: 'chr_mentor' };
+    const state = reachMutiny({ ...others, 3: 'chr_peacemaker' });
+    passWindow(state);
+    submitAll(state, () => 0);
+    expect(buildPlayerView(state, 3).activationOptions).toHaveLength(0);
+    expect(() => applyCommand(state, 3, { type: 'activateCharacter', characterId: 'chr_peacemaker' })).toThrow(/不可启动/);
+    passWindow(state);
+    expect(state.stage).toBe('preDraw');
+  });
+
+  it('捣乱者：无人出枪时不可发动，不再死锁', () => {
+    const others: Record<number, string> = { 0: 'chr_mentor', 1: 'chr_mentor', 2: 'chr_mentor', 4: 'chr_mentor', 5: 'chr_mentor' };
+    const state = reachMutiny({ ...others, 3: 'chr_troublemaker' });
+    passWindow(state);
+    submitAll(state, () => 0);
+    expect(buildPlayerView(state, 3).activationOptions).toHaveLength(0);
+    expect(() => applyCommand(state, 3, { type: 'activateCharacter', characterId: 'chr_troublemaker' })).toThrow(/不可启动/);
+    passWindow(state);
+    expect(state.stage).toBe('preDraw');
+  });
+
   it('大战略家：成为船长则不收回；未成为则收回', () => {
     const state = reachMutiny({ 1: 'chr_master_strategist', 4: 'chr_master_strategist' });
     // 仅1号持有（4号用于覆盖测试不存在第二张），此处1号出最多→成船长
@@ -357,8 +381,10 @@ describe('角色效果：哗变相关', () => {
     applyCommand(state, 3, { type: 'choosePlayer', seat: 2 });
     closeWindow(state);
     submitAll(state, () => 0);
+    // 无人出枪时 afterReveal 窗口会立即自动关闭（和平使者/捣乱者不可发动），
+    // passWindow 可能连带关掉后续窗口，因此断言哗变结果而非中间阶段。
     passWindow(state);
-    expect(state.stage).toBe('preDraw');
+    expect(state.log.some((l) => l.textZh.includes('哗变失败'))).toBe(true);
     expect(state.captain).toBe(0);
   });
 });

@@ -8,6 +8,7 @@ import { createGameState } from '../state';
 const LONG_MAP = getLongMap();
 import { SeededRng } from '../rng';
 import { applyCommand } from '../engine';
+import { buildPlayerView } from '../views';
 
 describe('开局设置', () => {
   it('22张角色牌、23张导航牌（长航程）数据完整且ID唯一', () => {
@@ -77,6 +78,53 @@ describe('开局设置', () => {
     const state = makeState(6);
     state.players[2].eliminated = true;
     expect(() => applyCommand(state, 2, { type: 'pass' })).toThrow(/出局/);
+  });
+});
+
+describe('秘密阵营认知投影', () => {
+  it('海盗被感化后保留双方要求的非对称认知', () => {
+    const state = makeState(6, 321);
+    state.players.forEach((p) => { p.faction = 'sailor'; });
+    state.players[0].faction = 'pirate';
+    state.players[1].faction = 'cultist'; // 原海盗，现已被感化
+    state.players[2].faction = 'cultLeader';
+    state.initialPirateSeats = [0, 1];
+    state.convertedCultists = [1];
+
+    const oldPirateView = buildPlayerView(state, 0);
+    expect(oldPirateView.you.teammates).toContain(1);
+    expect(oldPirateView.players[1].faction).toBe('pirate');
+
+    const convertedView = buildPlayerView(state, 1);
+    expect(convertedView.you.teammates).toEqual([2]);
+    expect(convertedView.players[2].faction).toBe('cultLeader');
+
+    const leaderView = buildPlayerView(state, 2);
+    expect(leaderView.you.teammates).toContain(1);
+    expect(leaderView.players[1].faction).toBe('cultist');
+  });
+
+  it('邪教主秘密操作不会向其他玩家泄露操作者座位或效果数据', () => {
+    const state = makeState(6, 654);
+    state.players[2].faction = 'cultLeader';
+    state.pending = [{
+      id: 9001,
+      kind: 'choosePlayer',
+      actorSeat: 2,
+      data: { effect: 'conversionToCult', filter: 'convertible' },
+      reasonZh: '邪教皈依：选择一名玩家',
+      createdAtEvent: state.eventSeq,
+    }];
+    const outsider = buildPlayerView(state, 0);
+    expect(outsider.waitingFor).toBe('等待邪教主进行秘密操作');
+    expect(outsider.pending[0].actorSeat).toBe(-1);
+    expect(outsider.pending[0].data).toEqual({});
+    expect(JSON.stringify(outsider)).not.toContain('conversionToCult');
+
+    const leader = buildPlayerView(state, 2);
+    expect(leader.pending[0].mine).toBe(true);
+    expect(leader.pending[0].actorSeat).toBe(2);
+    expect(leader.pending[0].data.effect).toBe('conversionToCult');
   });
 });
 
@@ -246,7 +294,7 @@ describe('航海流程', () => {
     expect((p.data.cards as string[]).length).toBe(2);
   });
 
-  it('领航员弃一张后执行另一张；船只移动；牌数守恒', () => {
+  it('领航员弃牌后必须等待船长公开，船长行动后才移动；牌数守恒', () => {
     const state = reachNavigatorChoice();
     const cardSum = () => {
       const capRem = state.navigation.captainCards.filter(
@@ -273,10 +321,15 @@ describe('航海流程', () => {
     expect(totalBefore).toBe(23);
     const p = topPending(state)!;
     const cards = p.data.cards as string[];
+    const startHex = state.shipHex;
     applyCommand(state, state.navigator, { type: 'navigatorAction', action: 'discard', cardId: cards[0] });
-    // 导航牌被执行
+    expect(topPending(state)?.kind).toBe('captainReveal');
+    expect(topPending(state)?.actorSeat).toBe(state.captain);
     expect(state.playedCardThisRound).toBe(cards[1]);
-    expect(state.shipHex).not.toBe(state.map.startHexId);
+    expect(state.shipHex).toBe(startHex);
+    expect(() => applyCommand(state, state.lieutenant, { type: 'revealNavigation' })).toThrow();
+    applyCommand(state, state.captain, { type: 'revealNavigation' });
+    expect(state.shipHex).not.toBe(startHex);
     expect(cardSum()).toBe(23);
   });
 

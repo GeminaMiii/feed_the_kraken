@@ -303,6 +303,8 @@ function isValidCommand(cmd: unknown): boolean {
       return typeof c.cardId === 'string' && (c.cardId as string).length <= 64;
     case 'navigatorAction':
       return (c.action === 'discard' && typeof c.cardId === 'string') || c.action === 'jumpShip';
+    case 'revealNavigation':
+      return true;
     case 'floggingDeclare':
       return c.declares === 'sailor' || c.declares === 'pirate' || c.declares === 'cult';
     case 'allocateGuns':
