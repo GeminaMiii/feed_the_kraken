@@ -7,6 +7,7 @@ import {
   ActivationOption,
   Faction,
   GameState,
+  PlayerState,
   PlayerView,
   PendingChoice,
   ViewPending,
@@ -81,8 +82,31 @@ function teammatesOf(state: GameState, seatId: number): number[] {
   return out;
 }
 
+/** 观战者座位号（buildPlayerView 对该座位返回无秘密的安全桩） */
+export const SPECTATOR_SEAT = -99;
+
+// 观战者桩：you 块不含任何秘密信息
+const SPECTATOR_STUB: PlayerState = {
+  seatId: SPECTATOR_SEAT,
+  name: '观战者',
+  faction: null,
+  characterId: null,
+  characterRevealed: false,
+  guns: 0,
+  resumeCount: 0,
+  resumes: [],
+  offDuty: false,
+  noTongue: false,
+  eliminated: false,
+  eliminationReason: null,
+  cabinSearched: false,
+  flogged: false,
+  notFactions: [],
+};
+
 export function buildPlayerView(state: GameState, seatId: number): PlayerView {
-  const me = seatOf(state, seatId);
+  const isSpectator = seatId === SPECTATOR_SEAT;
+  const me = isSpectator ? SPECTATOR_STUB : seatOf(state, seatId);
   const players: ViewPlayer[] = state.players.map((p) => {
     const revealed = p.characterRevealed && p.characterId ? p.characterId : null;
     return {
@@ -123,7 +147,7 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
 
   // 激活窗口选项
   let activationOptions: ActivationOption[] = [];
-  if (state.activation && !me.eliminated) {
+  if (state.activation && !me.eliminated && !isSpectator) {
     activationOptions = computeActivationOptionsForView(state, seatId);
   }
 
@@ -158,7 +182,7 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
       offDuty: me.offDuty,
       noTongue: me.noTongue,
       eliminated: me.eliminated,
-      teammates: teammatesOf(state, seatId),
+      teammates: isSpectator ? [] : teammatesOf(state, seatId),
     },
     players,
     mapId: state.mapId,
@@ -261,5 +285,5 @@ function computeActivationOptionsForView(state: GameState, seatId: number): Acti
 
 // 观战/大厅公共视图（不含任何秘密）
 export function buildSpectatorView(state: GameState): PlayerView {
-  return buildPlayerView(state, -99);
+  return buildPlayerView(state, SPECTATOR_SEAT);
 }

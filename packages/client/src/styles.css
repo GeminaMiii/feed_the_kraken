@@ -807,3 +807,147 @@ button {
   color: var(--lantern);
   margin-bottom: 8px;
 }
+
+/* ============================================================
+   T1-T6 新增：回合提醒 / 等待计时 / 观战 / 复盘 / 结束操作条
+   ============================================================ */
+
+/* T3：轮到你 toast（右下角滑入） */
+.myturn-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  background: var(--hull, #10263a);
+  border: 1px solid var(--lantern, #e8b64c);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--foam, #cfe3ef);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 300px;
+  animation: toast-in 0.25s ease-out;
+}
+.myturn-toast b {
+  color: var(--lantern, #e8b64c);
+  font-size: 14px;
+}
+.myturn-toast span {
+  font-size: 13px;
+}
+.myturn-toast.out {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.3s;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* T2：等待超时高亮 */
+.waiting.long {
+  color: #ff9a6b;
+  font-weight: 700;
+}
+
+/* T4：对局结束操作条 */
+.end-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* T5：观战 */
+.badge.spec {
+  background: rgba(232, 182, 76, 0.15);
+  color: var(--lantern, #e8b64c);
+  border: 1px solid var(--lantern, #e8b64c);
+}
+.hint.last-result {
+  border-left: 3px solid var(--lantern, #e8b64c);
+  padding-left: 8px;
+  margin-bottom: 6px;
+}
+
+/* 设置弹窗复选框行 */
+.field.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row;
+}
+.field.check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--lantern, #e8b64c);
+}
+
+/* T6：复盘 */
+.replay-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 10, 16, 0.92);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.replay {
+  width: min(1100px, 96vw);
+  max-height: 94vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.replay .topbar {
+  position: static;
+}
+.replay-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.replay-board {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+.replay-log {
+  width: 280px;
+  flex-shrink: 0;
+  max-height: 60vh;
+}
+.replay-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 800px) {
+  .replay-main {
+    flex-direction: column;
+  }
+  .replay-log {
+    width: 100%;
+    max-height: 200px;
+  }
+}
+
+/* 尊重减少动态偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .myturn-toast {
+    animation: none;
+  }
+}

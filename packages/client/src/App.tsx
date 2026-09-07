@@ -2,9 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   apiCreateRoom,
   apiJoinRoom,
+  apiSpectate,
   clearSession,
+  clearSpectateSession,
   connectSocket,
   loadSessions,
+  loadSpectateSessions,
   registerSocket,
   SessionInfo,
   RoomFullView,
@@ -21,7 +24,7 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<import('socket.io-client').Socket | null>(null);
 
-  // 自动恢复：本地存有会话则尝试重连
+  // 自动恢复：本地存有会话则尝试重连（玩家会话优先，观战会话列出选择）
   useEffect(() => {
     const sessions = loadSessions();
     const keys = Object.keys(sessions);
@@ -31,6 +34,8 @@ export default function App() {
       // 多个会话：列出选择
       setResumeList(Object.values(sessions));
     }
+    const spSessions = Object.values(loadSpectateSessions());
+    if (spSessions.length > 0 && keys.length === 0) setResumeList(spSessions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -47,11 +52,21 @@ export default function App() {
     socket.on('disconnect', () => setConnected(false));
     socket.on('connect_error', (e: Error) => {
       if (/会话无效|过期/.test(e.message)) {
-        clearSession(s.roomId);
+        if (s.spectator) clearSpectateSession(s.roomId);
+        else clearSession(s.roomId);
         setSession(null);
         setResumeList([]);
       }
       setConnErr(`连接失败：${e.message}`);
+    });
+    // 被移出房间（服务端推送，如观战席被清空后的兜底）
+    socket.on('lobby:left', () => {
+      clearSpectateSession(s.roomId);
+      clearSession(s.roomId);
+      socket.disconnect();
+      socketRef.current = null;
+      setSession(null);
+      setView(emptyView);
     });
     socket.on('roomView', (v: RoomFullView) => {
       setView(v ?? emptyView);
@@ -64,9 +79,12 @@ export default function App() {
     const s = session;
     if (s) {
       try {
-        import('./api').then((m) => m.getSocket(s.roomId).emit('lobby', { action: 'leave' }, () => {}));
+        if (!s.spectator) {
+          import('./api').then((m) => m.getSocket(s.roomId).emit('lobby', { action: 'leave' }, () => {}));
+        }
+        if (s.spectator) clearSpectateSession(s.roomId);
+        else clearSession(s.roomId);
       } catch {}
-      clearSession(s.roomId);
     }
     socketRef.current?.disconnect();
     socketRef.current = null;
@@ -75,6 +93,15 @@ export default function App() {
     setResumeList([]);
   }, [session]);
 
+  // 观战会话：spectator 标志贯穿 GameView
+  if (session?.spectator) {
+    return (
+      <>
+        {!connected && <div className="conn-banner">⚡ 连接中断，正在重连…</div>}
+        <GameView session={session} full={view} onLeave={leave} />
+      </>
+    );
+  }
   if (session && view.game && view.lobby?.status !== 'lobby') {
     return (
       <>
@@ -112,7 +139,7 @@ const Home: React.FC<{
   onClearResume: () => void;
   onCreated: (s: SessionInfo) => void;
 }> = ({ onResume, resumeList, onClearResume, onCreated }) => {
-  const [mode, setMode] = useState<'create' | 'join'>('create');
+  const [mode, setMode] = useState<'create' | 'join' | 'spectate'>('create');
   const [name, setName] = useState('');
   const [count, setCount] = useState(6);
   const [password, setPassword] = useState('');
@@ -148,6 +175,21 @@ const Home: React.FC<{
     setBusy(true);
     try {
       const s = await apiJoinRoom(roomId.trim().toUpperCase(), name.trim(), joinPwd || undefined);
+      onResume(s);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doSpectate = async () => {
+    setErr('');
+    if (!name.trim()) return setErr('请输入昵称');
+    if (!roomId.trim()) return setErr('请输入房间码');
+    setBusy(true);
+    try {
+      const s = await apiSpectate(roomId.trim().toUpperCase(), name.trim(), joinPwd || undefined);
       onResume(s);
     } catch (e) {
       setErr((e as Error).message);
@@ -206,6 +248,9 @@ const Home: React.FC<{
           <button className={`tab ${mode === 'join' ? 'on' : ''}`} onClick={() => setMode('join')}>
             加入房间
           </button>
+          <button className={`tab ${mode === 'spectate' ? 'on' : ''}`} onClick={() => setMode('spectate')}>
+            👁 观战
+          </button>
         </div>
         <label className="field">
           昵称
@@ -239,7 +284,7 @@ const Home: React.FC<{
               创建房间
             </button>
           </>
-        ) : (
+        ) : mode === 'join' ? (
           <>
             <label className="field">
               房间码
@@ -251,6 +296,21 @@ const Home: React.FC<{
             </label>
             <button className="btn primary big" disabled={busy} onClick={doJoin}>
               加入房间
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              房间码
+              <input value={roomId} onChange={(e) => setRoomId(e.target.value)} maxLength={8} placeholder="进行中或已结束的对局" />
+            </label>
+            <label className="field">
+              口令（若有）
+              <input value={joinPwd} onChange={(e) => setJoinPwd(e.target.value)} maxLength={32} />
+            </label>
+            <div className="hint small">观战者只读：可看公开信息与盘面，不能发言或操作。对局结束后可查看复盘。</div>
+            <button className="btn primary big" disabled={busy} onClick={doSpectate}>
+              👁 进入观战
             </button>
           </>
         )}

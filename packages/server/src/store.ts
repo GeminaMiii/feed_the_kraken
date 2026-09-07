@@ -68,6 +68,24 @@ export class Store {
         PRIMARY KEY (room_id, seat_id)
       );
       CREATE INDEX IF NOT EXISTS idx_seats_token ON seats(token_hash);
+      CREATE TABLE IF NOT EXISTS spectators (
+        room_id TEXT NOT NULL,
+        spectator_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        joined_at INTEGER NOT NULL,
+        PRIMARY KEY (room_id, spectator_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_spectators_token ON spectators(token_hash);
+      CREATE TABLE IF NOT EXISTS commands (
+        room_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        seat_id INTEGER,
+        payload TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        PRIMARY KEY (room_id, seq)
+      );
     `);
   }
 
@@ -210,6 +228,65 @@ export class Store {
 
   clearSeats(roomId: string) {
     this.db.prepare('DELETE FROM seats WHERE room_id = ?').run(roomId);
+  }
+
+  // ============ 观战者 ============
+
+  addSpectator(row: { roomId: string; spectatorId: number; name: string; tokenHash: string; joinedAt: number }) {
+    this.db
+      .prepare('INSERT INTO spectators (room_id, spectator_id, name, token_hash, joined_at) VALUES (?, ?, ?, ?, ?)')
+      .run(row.roomId, row.spectatorId, row.name, row.tokenHash, row.joinedAt);
+  }
+
+  getSpectators(roomId: string): { spectatorId: number; name: string; tokenHash: string }[] {
+    const rows = this.db
+      .prepare('SELECT * FROM spectators WHERE room_id = ? ORDER BY spectator_id')
+      .all(roomId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      spectatorId: r.spectator_id as number,
+      name: r.name as string,
+      tokenHash: r.token_hash as string,
+    }));
+  }
+
+  findSpectatorByTokenHash(hash: string): { roomId: string; spectatorId: number } | null {
+    const row = this.db.prepare('SELECT room_id, spectator_id FROM spectators WHERE token_hash = ?').get(hash) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return { roomId: row.room_id as string, spectatorId: row.spectator_id as number };
+  }
+
+  clearSpectators(roomId: string) {
+    this.db.prepare('DELETE FROM spectators WHERE room_id = ?').run(roomId);
+  }
+
+  // ============ 命令日志（回放） ============
+
+  appendCommand(row: { roomId: string; seq: number; kind: 'setup' | 'command'; seatId: number | null; payload: unknown; ts: number }) {
+    this.db
+      .prepare('INSERT INTO commands (room_id, seq, kind, seat_id, payload, ts) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(row.roomId, row.seq, row.kind, row.seatId, JSON.stringify(row.payload), row.ts);
+  }
+
+  listCommands(roomId: string): { seq: number; kind: string; seatId: number | null; payload: unknown; ts: number }[] {
+    const rows = this.db
+      .prepare('SELECT * FROM commands WHERE room_id = ? ORDER BY seq')
+      .all(roomId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      seq: Number(r.seq),
+      kind: r.kind as string,
+      seatId: r.seat_id === null ? null : Number(r.seat_id),
+      payload: JSON.parse(r.payload as string),
+      ts: Number(r.ts),
+    }));
+  }
+
+  maxCommandSeq(roomId: string): number {
+    const row = this.db.prepare('SELECT MAX(seq) AS m FROM commands WHERE room_id = ?').get(roomId) as
+      | { m: number | null }
+      | undefined;
+    return row?.m ?? 0;
   }
 
   private mapSeat(row: Record<string, unknown>): SeatRow {

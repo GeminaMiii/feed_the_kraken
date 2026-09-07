@@ -12,6 +12,7 @@ import { RoomManager, RoomError, RoomFullView } from './rooms';
 import { Store } from './store';
 import { Command } from '@ftk/engine';
 import { RateLimiter, setServerSecret } from './util';
+import { BotRunner } from './bots';
 import { randomBytes } from 'node:crypto';
 
 // 默认路径基于 __dirname（packages/server/dist，编译后与 src 同相对深度）解析，与启动目录无关：
@@ -37,6 +38,32 @@ const store = new Store(DB_PATH);
   setServerSecret(secret);
 }
 const rooms = new RoomManager(store);
+
+// ============ 机器人自动行动（T1） ============
+// 房间级 reqId 计数器：Bot 命令走同一幂等通道，必须严格递增；
+// 初值取 Date.now() 保证跨重启后必然大于旧值（lastReqBySeat 为内存态，重启即清零，双保险）。
+const botReqCounters = new Map<string, number>();
+function nextBotReqId(roomId: string): number {
+  const n = Math.max(botReqCounters.get(roomId) ?? 0, Date.now()) + 1;
+  botReqCounters.set(roomId, n);
+  return n;
+}
+
+const BOT_DELAY_MIN = Number(process.env.FTK_BOT_DELAY_MIN ?? 400);
+const BOT_DELAY_MAX = Number(process.env.FTK_BOT_DELAY_MAX ?? 1200);
+const botRunner = new BotRunner(
+  {
+    botSeats: (roomId) => (rooms.botAutoEnabled(roomId) ? rooms.botSeats(roomId) : []),
+    getGameView: (roomId, seatId) => rooms.gameViewForSeat(roomId, seatId),
+    applyBotCommand: (roomId, seatId, cmd) => rooms.applyGameCommand(roomId, seatId, cmd, nextBotReqId(roomId)),
+    onChanged: (roomId) => broadcastRoom(roomId),
+  },
+  BOT_DELAY_MIN,
+  BOT_DELAY_MAX,
+);
+function kickBots(roomId: string) {
+  if (rooms.botAutoEnabled(roomId)) botRunner.kick(roomId);
+}
 
 // ============ 限速器（可用环境变量覆盖，默认值适合真人玩家） ============
 const limiterCreate = new RateLimiter(Number(process.env.FTK_RATE_CREATE ?? 5), 60_000);
@@ -110,6 +137,38 @@ app.post('/api/rooms/:roomId/join', (req, res) => {
   }
 });
 
+// 以观战身份加入进行中/已结束的对局（T5）
+app.post('/api/rooms/:roomId/spectate', (req, res) => {
+  if (!limiterJoin.allow(clientKey(req))) {
+    res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+    return;
+  }
+  try {
+    const result = rooms.spectate({
+      roomId: req.params.roomId,
+      name: req.body?.name,
+      password: typeof req.body?.password === 'string' ? req.body.password : undefined,
+    });
+    res.json(result);
+  } catch (e) {
+    respondError(res, e);
+  }
+});
+
+// 对局回放数据：仅已结束的对局开放（进行中的命令日志含哗变枪数，泄密）（T6）
+app.get('/api/rooms/:roomId/replay', (req, res) => {
+  try {
+    const data = rooms.replayData(req.params.roomId?.trim()?.toUpperCase() ?? '');
+    if (!data) {
+      res.status(404).json({ error: '该对局没有回放数据' });
+      return;
+    }
+    res.json(data);
+  } catch (e) {
+    respondError(res, e);
+  }
+});
+
 function respondError(res: express.Response, e: unknown) {
   if (e instanceof RoomError) {
     res.status(e.httpStatus).json({ error: e.message, code: e.code });
@@ -146,11 +205,13 @@ const io = new SocketServer(server, {
 interface AuthPayload {
   token: string;
   roomId: string;
+  role?: 'spectator';
 }
 
 interface SocketSession {
   roomId: string;
-  seatId: number;
+  seatId: number; // 观战者为 -1
+  spectatorId?: number;
 }
 
 const sessions = new Map<Socket, SocketSession>();
@@ -161,21 +222,35 @@ io.use((socket, next) => {
     next(new Error('需要 token 与 roomId'));
     return;
   }
+  // 玩家 token 优先；未命中且声明观战角色时按观战 token 反查
   const resolved = rooms.resolveToken(token);
-  if (!resolved || resolved.roomId !== roomId) {
-    next(new Error('会话无效或已过期'));
+  if (resolved && resolved.roomId === roomId) {
+    socket.data.seatId = resolved.seatId;
+    next();
     return;
   }
-  socket.data.seatId = resolved.seatId;
-  next();
+  if (socket.handshake.auth?.role === 'spectator') {
+    const sp = rooms.resolveSpectatorToken(token);
+    if (sp && sp.roomId === roomId) {
+      socket.data.spectatorId = sp.spectatorId;
+      next();
+      return;
+    }
+  }
+  next(new Error('会话无效或已过期'));
 });
 
 io.on('connection', (socket) => {
-  const seatId: number = socket.data.seatId;
+  const spectatorId: number | undefined = socket.data.spectatorId;
+  const seatId: number = spectatorId !== undefined ? -1 : socket.data.seatId;
   const roomId: string = socket.handshake.auth.roomId;
-  sessions.set(socket, { roomId, seatId });
+  sessions.set(socket, spectatorId !== undefined ? { roomId, seatId: -1, spectatorId } : { roomId, seatId });
   socket.join(`room:${roomId}`);
-  rooms.markConnected(roomId, seatId, true);
+  if (spectatorId !== undefined) {
+    rooms.markSpectatorConnected(roomId, spectatorId, true);
+  } else {
+    rooms.markConnected(roomId, seatId, true);
+  }
   broadcastRoom(roomId);
 
   socket.on('sync', () => {
@@ -183,10 +258,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('heartbeat', () => {
+    if (spectatorId !== undefined) return;
     rooms.heartbeat(roomId, seatId);
   });
 
   socket.on('lobby', (payload, ack) => {
+    if (spectatorId !== undefined) {
+      ack?.({ error: { code: 'SPECTATOR_READONLY', message: '观战者不能操作' } });
+      return;
+    }
     try {
       const action = payload?.action;
       switch (action) {
@@ -213,20 +293,31 @@ io.on('connection', (socket) => {
         case 'setMap':
           rooms.setMap(roomId, seatId, payload.mapId);
           break;
+        case 'setBotAuto':
+          rooms.setBotAuto(roomId, seatId, !!payload.enabled);
+          break;
         case 'start':
           rooms.startGame(roomId, seatId);
+          break;
+        case 'rematch':
+          rooms.rematch(roomId, seatId);
           break;
         default:
           throw new RoomError('BAD_ACTION', '未知的大厅操作');
       }
       ack?.({ ok: true });
       broadcastRoom(roomId);
+      if (action === 'start') kickBots(roomId);
     } catch (e) {
       ack?.({ error: describeError(e) });
     }
   });
 
   socket.on('command', (payload, ack) => {
+    if (spectatorId !== undefined) {
+      ack?.({ error: { code: 'SPECTATOR_READONLY', message: '观战者不能操作' } });
+      return;
+    }
     if (!limiterCommand.allow(`${roomId}:${seatId}`)) {
       ack?.({ error: '操作过于频繁，请稍候' });
       return;
@@ -252,6 +343,7 @@ io.on('connection', (socket) => {
       .then(() => {
         ack?.({ ok: true });
         broadcastRoom(roomId);
+        kickBots(roomId);
       })
       .catch((e) => {
         ack?.({ error: describeError(e) });
@@ -259,6 +351,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat', (payload, ack) => {
+    if (spectatorId !== undefined) {
+      ack?.({ error: { code: 'SPECTATOR_READONLY', message: '观战者不能发言' } });
+      return;
+    }
     if (!limiterChat.allow(`${roomId}:${seatId}`)) {
       ack?.({ error: '发言过于频繁' });
       return;
@@ -274,7 +370,11 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     sessions.delete(socket);
-    rooms.markConnected(roomId, seatId, false);
+    if (spectatorId !== undefined) {
+      rooms.markSpectatorConnected(roomId, spectatorId, false);
+    } else {
+      rooms.markConnected(roomId, seatId, false);
+    }
     broadcastRoom(roomId);
   });
 });
@@ -320,7 +420,7 @@ function sendFullView(socket: Socket) {
   const sess = sessions.get(socket);
   if (!sess) return;
   try {
-    const view: RoomFullView = rooms.fullView(sess.roomId, sess.seatId);
+    const view: RoomFullView = rooms.fullView(sess.roomId, sess.seatId, { spectator: sess.spectatorId !== undefined });
     socket.emit('roomView', view);
   } catch {
     socket.emit('roomView', { error: '房间已关闭' });
@@ -338,18 +438,34 @@ setInterval(() => {
   rooms.cleanup();
 }, CLEANUP_INTERVAL_MS);
 
+// 待行动超时托管（T2）：默认关闭；仅对激活窗口自动 pass，关键决策永不自动
+const PENDING_TIMEOUT_MS = Number(process.env.FTK_PENDING_TIMEOUT_MS ?? 0);
+if (PENDING_TIMEOUT_MS > 0) {
+  setInterval(() => {
+    rooms.sweepPendingTimeouts({
+      timeoutMs: PENDING_TIMEOUT_MS,
+      nextReqId: nextBotReqId,
+      onChanged: (roomId) => broadcastRoom(roomId),
+    });
+  }, 5_000);
+}
+
 server.listen(PORT, HOST, () => {
   console.log(`[FTK] 服务已启动: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`[FTK] 数据库: ${DB_PATH}`);
   console.log(`[FTK] 允许的跨域来源: ${ALLOWED_ORIGIN}`);
+  // 恢复中断前进行中的机器人对局（服务器重启场景）
+  for (const roomId of rooms.playingRoomIdsWithBots()) botRunner.kick(roomId);
 });
 
 process.on('SIGTERM', () => {
+  botRunner.stopAll();
   server.close();
   store.close();
   process.exit(0);
 });
 process.on('SIGINT', () => {
+  botRunner.stopAll();
   server.close();
   store.close();
   process.exit(0);
