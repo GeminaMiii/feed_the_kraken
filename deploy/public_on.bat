@@ -13,7 +13,7 @@ echo Your public link is the https://xxxx.trycloudflare.com shown below.
 echo Share that link with friends. Close this window to close public access.
 echo.
 
-cloudflared.exe tunnel --url http://localhost:3000 --no-autoupdate
+cloudflared.exe tunnel --url http://localhost:3000 --protocol http2 --no-autoupdate
 echo.
 echo Tunnel exited.
 pause

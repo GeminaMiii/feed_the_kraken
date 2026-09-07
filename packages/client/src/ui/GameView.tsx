@@ -6,7 +6,6 @@ import { ActionPanel, cardNameZh } from './ActionPanel';
 import { destinationText } from './navcards';
 import { ReplayView } from './ReplayView';
 import { BOARD_SKINS, DEFAULT_SKIN_ID, SKIN_STORAGE_KEY, getSkin } from './boards/registry';
-import { characterFaceUrl } from './characters';
 import {
   notifyMyTurn,
   loadNotifySettings,
@@ -15,17 +14,10 @@ import {
   NotifySettings,
 } from '../notify';
 import { useModalDismiss } from './useModalDismiss';
-import {
-  CHARACTER_MAP,
-  CHARACTERS,
-  NAV_CARD_MAP,
-  RITUAL_DECK,
-  RITUAL_ZH,
-  getMap,
-} from '@ftk/engine';
+import { CHARACTER_MAP, CHARACTERS, NAV_CARD_MAP, RITUAL_DECK, RITUAL_ZH, getMap } from '@ftk/engine';
 import type { PlayerView } from '@ftk/engine';
 import type { Command } from '@ftk/engine';
-import { CardFace, CardZoom, cardTitle, cardCopy, cardAssetUrl } from './cards';
+import { CardFace, CardZoom, cardTitle, cardAssetUrl } from './cards';
 
 const cardLabel = (id: string) => cardNameZh(id);
 
@@ -42,10 +34,6 @@ export const GameView: React.FC<{
   ) : (
     <PlayerGameView {...props} />
   );
-
-const CardArt: React.FC<{ id: string; compact?: boolean }> = ({ id, compact }) => {
-  return <CardFace id={id} compact={compact} />;
-};
 
 const ProcessBar: React.FC<{ stage: string }> = ({ stage }) => {
   const steps = [
@@ -67,7 +55,7 @@ const RoleModal: React.FC<{ view: PlayerView; onClose: () => void }> = ({ view, 
   const cid = view.you.characterId;
   if (!cid || !CHARACTER_MAP[cid]) return null;
   const def = CHARACTER_MAP[cid];
-  return <div className="modal-mask" onClick={onClose}><div className="modal role-modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="modal-kicker">你的秘密身份</div><div className="modal-title">我的角色 · {def.nameZh}</div></div><button className="btn small" onClick={onClose}>关闭</button></div><img className="role-modal-card" src={cardAssetUrl(cid)} alt={def.nameZh} /><p className="role-modal-note">这张角色牌只对你可见；角色亮出后，其他玩家才能在玩家区看到正面。</p></div></div>;
+  return <div className="modal-mask" onClick={onClose}><div className="modal role-modal" onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="modal-kicker">你的秘密身份</div><div className="modal-title">我的角色 · {def.nameZh}</div></div><button className="btn small" onClick={onClose}>关闭</button></div><img className="role-modal-card" src={cardAssetUrl(cid) ?? undefined} alt={def.nameZh} /><p className="role-modal-note">这张角色牌只对你可见；角色亮出后，其他玩家才能在玩家区看到正面。</p></div></div>;
 };
 
 const CardLibrary: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -93,9 +81,9 @@ const CardLibrary: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   return <div className="modal-mask" onClick={onClose}><div className="modal library-modal" onClick={(e) => e.stopPropagation()}>
     <div className="modal-heading"><div><div className="modal-kicker">船上资料库 · 点击任意卡牌放大</div><div className="modal-title">全部卡牌</div></div><button className="btn small" onClick={onClose}>关闭</button></div>
     <div className="library-tabs" role="tablist">{[['roles','角色卡'],['nav','导航卡'],['ritual','邪教仪式卡']].map(([id,label]) => <button key={id} role="tab" aria-selected={tab === id} className={`btn ${tab === id ? 'sel' : ''}`} onClick={() => setTab(id as typeof tab)}>{label}</button>)}</div>
-    {tab === 'roles' && <section><h3>角色卡 · {CHARACTERS.length} 张不同角色</h3><div className="card-gallery character-gallery">{CHARACTERS.map((c) => <button className="library-character library-card-button" key={c.id} onClick={() => setPreview(c.id)}><CardFace id={c.id} compact /><b>{c.nameZh}</b></button>)}</div></section>}
-    {tab === 'nav' && <section><h3>导航卡 · 每类显示一张</h3><div className="card-gallery">{navCards.map((id) => <button className="library-card-button" key={id} onClick={() => setPreview(id)}><CardArt id={id} compact /></button>)}</div><div className="card-counts"><b>牌堆数量</b>{Object.entries(navCounts).map(([key,count]) => <span key={key}>{cardLabel(Object.keys(NAV_CARD_MAP).find((id) => `${NAV_CARD_MAP[id].direction}:${NAV_CARD_MAP[id].type}` === key)!)} × {count}</span>)}</div></section>}
-    {tab === 'ritual' && <section><h3>邪教仪式卡 · 每类显示一张</h3><div className="card-gallery">{ritualCards.map((id) => <button className="library-card-button" key={id} onClick={() => setPreview(id)}><CardArt id={id} compact /><b>{ritualCounts[RITUAL_ZH[id] ?? id] > 1 ? `${RITUAL_ZH[id]}*${ritualCounts[RITUAL_ZH[id] ?? id]}` : RITUAL_ZH[id]}</b></button>)}</div><div className="card-counts"><b>仪式牌堆数量</b>{ritualCards.map((id) => <span key={id}>{RITUAL_ZH[id]} × {ritualCounts[RITUAL_ZH[id] ?? id]}</span>)}</div></section>}
+    {tab === 'roles' && <section><h3>角色卡 · {CHARACTERS.length} 张不同角色</h3><div className="card-gallery character-gallery">{CHARACTERS.map((c) => <button className="library-card-button" key={c.id} onClick={() => setPreview(c.id)}><CardFace id={c.id} compact /><b>{c.nameZh}</b></button>)}</div></section>}
+    {tab === 'nav' && <section><h3>导航卡 · 每类显示一张</h3><div className="card-gallery">{navCards.map((id) => <button className="library-card-button" key={id} onClick={() => setPreview(id)}><CardFace id={id} compact /><b>{cardTitle(id)}</b></button>)}</div><div className="card-counts"><b>牌堆数量</b>{Object.entries(navCounts).map(([key,count]) => <span key={key}>{cardLabel(Object.keys(NAV_CARD_MAP).find((id) => `${NAV_CARD_MAP[id].direction}:${NAV_CARD_MAP[id].type}` === key)!)} × {count}</span>)}</div></section>}
+    {tab === 'ritual' && <section><h3>邪教仪式卡 · 每类显示一张</h3><div className="card-gallery">{ritualCards.map((id) => <button className="library-card-button" key={id} onClick={() => setPreview(id)}><CardFace id={id} compact /><b>{ritualCounts[RITUAL_ZH[id] ?? id] > 1 ? `${RITUAL_ZH[id]}*${ritualCounts[RITUAL_ZH[id] ?? id]}` : RITUAL_ZH[id]}</b></button>)}</div><div className="card-counts"><b>仪式牌堆数量</b>{ritualCards.map((id) => <span key={id}>{RITUAL_ZH[id]} × {ritualCounts[RITUAL_ZH[id] ?? id]}</span>)}</div></section>}
     {preview && <CardZoom id={preview} onClose={() => setPreview(null)} />}
   </div></div>;
 };
@@ -125,7 +113,7 @@ const RoleIntro: React.FC<{ view: PlayerView; onDone: () => void }> = ({ view, o
   const cid = view.you.characterId;
   const def = cid ? CHARACTER_MAP[cid] : null;
   if (!def) return null;
-  return <div className="role-intro-mask"><div className="role-intro"><div className="modal-kicker">新航程开始 · 私密角色</div><div className={`role-flip-card ${flipped ? 'is-flipped' : ''}`} onClick={() => setFlipped(true)}><div className="role-face role-back"><span>⚓</span><b>FEED THE KRAKEN</b><small>点击翻开角色牌</small></div><div className="role-face role-front"><img src={cardAssetUrl(cid!)} alt={def.nameZh} /><strong>{def.nameZh}</strong><p>{def.textZh}</p></div></div><button className="btn primary" onClick={flipped ? onDone : () => setFlipped(true)}>{flipped ? '收起并加入玩家区' : '翻开角色牌'}</button></div></div>;
+  return <div className="role-intro-mask"><div className="role-intro"><div className="modal-kicker">新航程开始 · 私密角色</div><div className={`role-flip-card ${flipped ? 'is-flipped' : ''}`} onClick={() => setFlipped(true)}><div className="role-face role-back"><span>⚓</span><b>FEED THE KRAKEN</b><small>点击翻开角色牌</small></div><div className="role-face role-front"><img src={cardAssetUrl(cid!)!} alt={def.nameZh} /></div></div><button className="btn primary" onClick={flipped ? onDone : () => setFlipped(true)}>{flipped ? '收起并加入玩家区' : '翻开角色牌'}</button></div></div>;
 };
 
 
@@ -135,7 +123,7 @@ const YourCharacter: React.FC<{ view: PlayerView; acting: boolean }> = ({ view, 
   if (!cid) return null;
   const def = CHARACTER_MAP[cid];
   if (!def) return null;
-  const face = cardAssetUrl(cid);
+  const face = cardAssetUrl(cid) ?? undefined;
   return (
     <div className={`panel char-panel ${view.you.characterRevealed ? 'revealed' : ''}`}>
       <div className="panel-title">

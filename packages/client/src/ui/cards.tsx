@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { CHARACTER_MAP, NAV_CARD_MAP, DIRECTION_ZH, NAV_TYPE_ZH, RITUAL_ZH } from '@ftk/engine';
 
+// 卡图只取自 public/cards 下的三个子文件夹：characters / navigation / rituals。
+// 角色卡为成品整卡（图片自带标题与技能文字）；导航/仪式卡为独立插画。
 const navAsset = (id: string) => {
   const c = NAV_CARD_MAP[id];
   if (!c) return `/cards/navigation/${id}.png`;
@@ -8,14 +10,13 @@ const navAsset = (id: string) => {
   return `/cards/navigation/nav_${suffix}.png`;
 };
 
-// 角色卡为成品整卡（含标题与技能文字），导航/仪式卡为独立插画；
-// 军火库、舱室搜查尚无新图，暂沿用旧裁剪图。
-export const cardAssetUrl = (id: string) => {
+export const cardAssetUrl = (id: string): string | null => {
   if (CHARACTER_MAP[id]) return `/cards/characters/${id}.png`;
   if (NAV_CARD_MAP[id]) return navAsset(id);
   if (id.startsWith('ritual_conversion')) return '/cards/rituals/ritual_conversion_to_cult.png';
-  const suffix = id.replace('ritual_', '').replace('guns_stash', 'guns-stash').replace('cult_cabin_search', 'cabin-search');
-  return `/cards/ritual-${suffix}.png`;
+  if (id === 'ritual_guns_stash') return '/cards/rituals/ritual_guns_stash.png';
+  if (id === 'ritual_cult_cabin_search') return '/cards/rituals/ritual_cult_cabin_search.png';
+  return null;
 };
 
 export function cardTitle(id: string) {
@@ -36,19 +37,17 @@ export function cardCopy(id: string) {
   } as Record<string, string>)[id] ?? '';
 }
 
-export const CardBack: React.FC<{ compact?: boolean }> = ({ compact }) => (
-  <div className={`card-face card-back ${compact ? 'compact' : ''}`} aria-label="卡牌背面">
-    <div className="card-back-seal">⚓</div><strong>FEED THE KRAKEN</strong><small>THE NORTH SEA · 1899</small>
-  </div>
-);
-
-export const CardFace: React.FC<{ id: string; compact?: boolean; className?: string }> = ({ id, compact, className = '' }) => (
-  <article className={`card-face ${CHARACTER_MAP[id] ? 'is-character' : ''} ${compact ? 'compact' : ''} ${className}`}>
-    <div className="card-ornament"><span>{CHARACTER_MAP[id] ? 'THE CREW' : NAV_CARD_MAP[id] ? 'NAVIGATION' : 'CULT RITUAL'}</span><i>✦</i></div>
-    <img src={cardAssetUrl(id)} alt="" loading="lazy" />
-    <div className="card-caption"><b>{cardTitle(id)}</b>{!compact && <p>{cardCopy(id)}</p>}</div>
-  </article>
-);
+// 直接展示卡面图片，不套装饰边框、标题条与说明框。
+export const CardFace: React.FC<{ id: string; compact?: boolean; className?: string }> = ({ id, compact, className = '' }) => {
+  const src = cardAssetUrl(id);
+  return (
+    <article className={`card-art ${compact ? 'compact' : ''} ${className}`}>
+      {src
+        ? <img src={src} alt={cardTitle(id)} loading="lazy" />
+        : <div className="card-art-empty"><b>{cardTitle(id)}</b>{!compact && <p>{cardCopy(id)}</p>}</div>}
+    </article>
+  );
+};
 
 export const CardZoom: React.FC<{ id: string; onClose: () => void }> = ({ id, onClose }) => {
   const ref = useRef<HTMLDivElement>(null);

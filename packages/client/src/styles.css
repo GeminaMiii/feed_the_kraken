@@ -1028,16 +1028,15 @@ button {
 .role-intro-mask { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: radial-gradient(circle,rgba(22,58,77,.65),rgba(2,8,13,.94) 70%); animation: fade-in .25s ease both; }
 .role-intro { width: min(360px, calc(100vw - 32px)); text-align: center; }
 .role-intro .modal-kicker { margin-bottom: 10px; color: var(--lantern); letter-spacing: 2px; font-family: var(--serif); }
-.role-flip-card { position: relative; width: 230px; height: 365px; margin: 0 auto 18px; cursor: pointer; perspective: 1000px; }
+.role-flip-card { position: relative; width: min(250px, 72vw); aspect-ratio: 901 / 1745; margin: 0 auto 18px; cursor: pointer; perspective: 1000px; }
 .role-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; backface-visibility: hidden; border: 2px solid #b38235; border-radius: 12px; box-shadow: 0 24px 70px rgba(0,0,0,.6), 0 0 30px rgba(232,180,76,.16); transition: transform .75s cubic-bezier(.2,.7,.2,1); }
 .role-back { gap: 18px; color: var(--lantern); background: repeating-linear-gradient(135deg,#122b3d 0,#122b3d 8px,#0d2231 8px,#0d2231 16px); }
 .role-back span { font-size: 74px; text-shadow: 0 0 20px rgba(232,180,76,.45); }
 .role-back b { font-family: var(--serif); letter-spacing: 2px; }
 .role-back small { color: var(--foam); }
-.role-front { transform: rotateY(180deg); color: #21170c; background: #d6b271; }
-.role-front img { width: 100%; height: 67%; object-fit: cover; object-position: top; }
-.role-front strong { width: 100%; padding: 8px; color: #f2d192; background: #131a1f; font-family: var(--serif); font-size: 18px; }
-.role-front p { margin: 0; padding: 9px 12px; font-size: 12px; line-height: 1.35; }
+/* 正面直接展示 characters 文件夹下的成品整卡（自带标题与技能文字） */
+.role-front { transform: rotateY(180deg); background: #091826; }
+.role-front img { width: 100%; height: 100%; object-fit: contain; }
 .role-flip-card.is-flipped .role-back { transform: rotateY(-180deg); }
 .role-flip-card.is-flipped .role-front { transform: rotateY(0); }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -1048,19 +1047,11 @@ button {
 .library-modal h3, .rules-modal h3 { margin: 16px 0 8px; color: var(--lantern); font-family: var(--serif); }
 .card-gallery { display: grid; grid-template-columns: repeat(auto-fill,minmax(120px,1fr)); gap: 10px; }
 .character-gallery { grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); }
-.library-character { display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--hull-deep); border: 1px solid var(--seam); border-radius: 6px; }
-.library-character img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; object-position: top; border-radius: 4px; }
-.library-character b { color: var(--lantern); }
-.library-character span { color: var(--foam); font-size: 11px; line-height: 1.35; }
 .library-card-button { appearance: none; width: 100%; padding: 0; color: inherit; background: transparent; border: 0; text-align: left; cursor: zoom-in; }
 .library-card-button:hover { filter: brightness(1.18); transform: translateY(-2px); }
 .role-modal { max-width: 420px; text-align: center; }
 .role-modal-card { display: block; width: min(300px, 80vw); max-height: 70vh; object-fit: contain; margin: 0 auto 12px; border: 1px solid #a57b32; border-radius: 8px; box-shadow: 0 15px 40px rgba(0,0,0,.5); }
 .role-modal-note { color: var(--foam); font-size: 12px; }
-.card-preview-mask { position: fixed; inset: 0; z-index: 75; display: grid; place-items: center; padding: 18px; background: rgba(2,7,11,.84); }
-.card-preview { width: min(420px, 92vw); max-height: 92vh; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px; overflow: auto; background: var(--hull); border: 1px solid var(--lantern); border-radius: 8px; box-shadow: 0 25px 80px #000; }
-.card-preview > img { width: min(350px, 82vw); max-height: 78vh; object-fit: contain; border-radius: 6px; }
-.card-preview > .card-art { width: min(350px, 82vw); min-height: 500px; }
 .rules-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 18px; }
 .rules-grid > div { padding: 10px 12px; background: var(--hull-deep); border-left: 2px solid var(--seam-lit); border-radius: 5px; }
 .rules-grid h3 { margin-top: 0; }
@@ -1078,49 +1069,35 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .process-step, .quick-action, .role-face, .role-mini-card { transition: none; animation: none; }
 }
-/* ---------- 典藏卡面系统：独立插画 + 清晰规则文字 ---------- */
-.card-face { position: relative; display: flex; flex-direction: column; overflow: hidden; aspect-ratio: 2 / 3; min-width: 150px; color: #2a1b10; background: #ead7ad; border: 3px solid #bc8c3c; border-radius: 12px; box-shadow: inset 0 0 0 2px #50351b, 0 9px 20px #02080dcc; }
-.card-face::after { content: ''; position: absolute; inset: 7px; border: 1px solid #d7ad5a; border-radius: 7px; pointer-events: none; }
-.card-face > img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: #112638; }
-.card-ornament { position: absolute; z-index: 1; inset: 10px 11px auto; display: flex; justify-content: space-between; color: #f4d38a; font: 700 9px var(--serif); letter-spacing: .12em; text-shadow: 0 1px 2px #000; }
-.card-ornament i { font-style: normal; font-size: 16px; line-height: 9px; }
-.card-caption { position: relative; z-index: 1; margin: -1px 8px 8px; padding: 8px 9px 6px; min-height: 58px; background: linear-gradient(#f4e6c2, #dec18a); border: 1px solid #9e7537; box-shadow: 0 1px 3px #37210a99; text-align: center; }
-.card-caption b { display: block; font: 700 17px/1.25 var(--serif); }
-.card-caption p { margin: 5px 0 0; font: 12px/1.45 var(--serif); text-align: left; }
-.card-face.compact { min-width: 92px; border-width: 2px; border-radius: 8px; }
-.card-face.compact::after { inset: 4px; }
-.card-face.compact .card-ornament { inset: 6px 7px auto; font-size: 6px; }
-.card-face.compact .card-caption { margin: -1px 4px 4px; padding: 4px 3px; min-height: 28px; }
-.card-face.compact .card-caption b { font-size: 11px; }
-/* 角色卡为成品整卡（901×1745，含标题与技能文字）：整卡直出，不叠加标题条 */
-.card-face.is-character { aspect-ratio: 901 / 1745; }
-.card-face.is-character > img { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; height: auto; }
-.card-face.is-character .card-ornament, .card-face.is-character .card-caption { display: none; }
-.card-back { justify-content: center; align-items: center; text-align: center; background: radial-gradient(circle, #20445a, #091a28 70%); color: #e7bd62; }
-.card-back-seal { display: grid; place-items: center; width: 58px; height: 58px; margin-bottom: 12px; border: 2px solid #c79743; border-radius: 50%; font-size: 28px; }
-.card-back strong { font: 700 13px var(--serif); letter-spacing: .13em; }
-.card-back small { margin-top: 4px; font: 8px var(--serif); letter-spacing: .1em; }
+/* ---------- 卡面直出：直接展示 public/cards 三个子文件夹中的图片，不加边框装饰 ---------- */
+.card-art { display: flex; flex-direction: column; }
+.card-art > img { display: block; width: 100%; height: auto; border-radius: 6px; }
+.card-art.compact > img { border-radius: 4px; }
+/* 仅当素材确实缺失或 ID 未识别时显示文字占位 */
+.card-art-empty { display: flex; flex-direction: column; justify-content: center; gap: 8px; aspect-ratio: 3 / 4; padding: 14px 10px; text-align: center; background: #0d2233; border: 1px dashed #3d6a8a; border-radius: 6px; }
+.card-art-empty b { color: var(--lantern); font: 700 15px/1.4 var(--serif); }
+.card-art-empty p { margin: 0; color: var(--mist); font: 12px/1.55 var(--serif); }
 .card-zoom-mask { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: #020810d9; backdrop-filter: blur(6px); }
 .card-zoom-panel { display: flex; align-items: center; gap: 24px; width: min(700px, 96vw); max-height: 94vh; padding: 20px; overflow: auto; background: linear-gradient(135deg, #102b3d, #071520); border: 1px solid #d5a753; border-radius: 16px; box-shadow: 0 20px 70px #000c; }
-.card-zoom-panel .card-face { width: min(42vw, 300px); flex: 0 0 auto; }
+.card-zoom-panel .card-art { width: min(42vw, 300px); flex: 0 0 auto; }
 .card-zoom-copy { color: #f0e2c3; font-family: var(--serif); }
 .card-zoom-copy h2 { color: #edc772; margin: 0 0 12px; }
 .card-zoom-copy p { line-height: 1.8; }
-@media (max-width: 600px) { .card-zoom-panel { flex-direction: column; max-height: 92vh; } .card-zoom-panel .card-face { width: min(70vw, 270px); } .card-zoom-copy { text-align: center; } }
+@media (max-width: 600px) { .card-zoom-panel { flex-direction: column; max-height: 92vh; } .card-zoom-panel .card-art { width: min(70vw, 270px); } .card-zoom-copy { text-align: center; } }
 .library-card-button { padding: 0; border: 0; background: transparent; color: var(--mist); cursor: zoom-in; text-align: center; }
-.library-card-button:hover .card-face { transform: translateY(-5px) rotate(-1deg); box-shadow: 0 14px 28px #000e, 0 0 0 2px var(--lantern); }
-.library-card-button .card-face { transition: transform .22s ease, box-shadow .22s ease; }
+.library-card-button:hover .card-art { transform: translateY(-5px) rotate(-1deg); box-shadow: 0 14px 28px #000e, 0 0 0 2px var(--lantern); }
+.library-card-button .card-art { transition: transform .22s ease, box-shadow .22s ease; border-radius: 6px; }
 .character-gallery .library-card-button { display: flex; flex-direction: column; gap: 6px; }
 .library-card-button > b { font: 700 13px var(--serif); }
 .card-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 14px; align-items: start; }
 .action-card-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .action-card-row .card-choice { width: 150px; }
-.action-card-row .card-choice .card-face { width: 100%; }
+.action-card-row .card-choice .card-art { width: 100%; }
 .card-action-overlay { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: 18px; background: #020810e8; backdrop-filter: blur(7px); animation: fade-in .18s ease both; }
 .card-action-dialog { width: min(900px, 96vw); max-height: 94vh; overflow: auto; padding: clamp(16px, 3vw, 30px); background: linear-gradient(135deg, #102d40, #071621); border: 1px solid #d4a64e; border-radius: 16px; box-shadow: 0 24px 80px #000e; }
 .card-action-dialog .action-card-row { justify-content: center; }
 .card-action-dialog .card-choice { width: min(36vw, 235px); }
-.card-action-dialog .card-face { min-width: 0; }
+.card-action-dialog .card-art { min-width: 0; }
 .card-action-dialog .modal-heading { margin-bottom: 18px; }
 .library-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; padding-bottom: 12px; border-bottom: 1px solid var(--seam); }
 .card-counts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; padding: 13px; color: var(--foam); background: #081824aa; border: 1px solid var(--seam); border-radius: 8px; font-family: var(--serif); }
@@ -1148,10 +1125,6 @@ button {
 .player-card-rail { position: relative; display: flex; justify-content: flex-end; align-items: center; min-width: 70px; padding: 3px 2px 6px 5px; overflow: visible; }
 .rail-card { flex: 0 0 58px; width: 58px; padding: 0; border: 0; background: transparent; color: inherit; cursor: zoom-in; }
 .rail-card:disabled { opacity: 1; cursor: default; }
-.rail-card .card-face { width: 58px; min-width: 58px; border-radius: 6px; }
-.rail-card .card-caption { min-height: 18px; margin: 0 2px 2px; padding: 2px 1px; }
-.rail-card .card-caption b { font-size: 7px; }
-.rail-card .card-ornament { display: none; }
 .faction-flip { width: 58px; aspect-ratio: 2 / 3; perspective: 700px; }
 .faction-flip-inner { position: relative; width: 100%; height: 100%; transition: transform .45s ease; transform-style: preserve-3d; }
 .faction-flip.is-revealed .faction-flip-inner { transform: rotateY(180deg); }
@@ -1170,8 +1143,8 @@ button {
 .revealed-role-link { display: block; margin-top: 7px; padding: 2px 0; border: 0; color: var(--lantern); background: transparent; font: 700 12px var(--serif); cursor: zoom-in; text-align: left; }
 .resume-track { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .resume-token { width: 38px; height: 38px; padding: 0; overflow: hidden; border: 1px solid #b98c39; border-radius: 5px; background: #091a26; cursor: zoom-in; box-shadow: 0 2px 5px #0008; }
-.resume-token .card-face { width: 38px; min-width: 38px; transform: translateY(-1px); border: 0; border-radius: 3px; }
-.resume-token .card-caption, .resume-token .card-ornament { display: none; }
+.resume-token .card-art { width: 38px; min-width: 38px; }
+.resume-token .card-art img { width: 38px; height: 38px; object-fit: cover; object-position: top; border-radius: 3px; }
 .faction-mark-menu { position: absolute; z-index: 12; top: calc(50% + 34px); right: 0; width: 132px; padding: 7px; border: 1px solid var(--lantern); border-radius: 7px; background: #071722f5; box-shadow: 0 10px 24px #000c; }
 .faction-mark-menu b { display: block; margin: 1px 3px 6px; color: var(--lantern); font: 700 11px var(--serif); }
 .faction-mark-menu button { width: 100%; margin: 2px 0; padding: 5px; border: 1px solid var(--seam); border-radius: 4px; color: var(--mist); background: #163348; cursor: pointer; }

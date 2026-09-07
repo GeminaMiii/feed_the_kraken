@@ -29,6 +29,7 @@ cloudflared*
 # ===== 日志 =====
 logs/
 *.log
+deploy/tunnel_log.txt
 npm-debug.log*
 
 # ===== 编辑器与操作系统 =====
