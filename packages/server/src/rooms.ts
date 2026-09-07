@@ -11,11 +11,13 @@ import {
   MIN_PLAYERS,
   MAX_PLAYERS,
   buildPlayerView,
+  buildSpectatorView,
   createGameState,
   applyCommand as engineApply,
   RuleError,
   PlayerView,
   STAGE_LABELS,
+  alivePlayers,
 } from '@ftk/engine';
 import { SeededRng, randomSeed } from '@ftk/engine';
 import { Store, RoomRow } from './store';
@@ -48,6 +50,19 @@ export interface ChatMsg {
   ts: number;
 }
 
+export interface SpectatorInfo {
+  spectatorId: number;
+  name: string;
+  tokenHash: string;
+  connected: boolean;
+}
+
+/** 当前需要行动的真人座位与等待起点（T2 待行动计时） */
+export interface WaitingInfo {
+  seats: number[];
+  since: number;
+}
+
 interface RoomWrap {
   row: RoomRow;
   passwordHash: string | null;
@@ -58,6 +73,12 @@ interface RoomWrap {
   queue: Promise<unknown>; // 串行化
   dirty: boolean;
   bots: Set<number>; // 机器人座位
+  botAuto: boolean; // 机器人自动行动开关（T1）
+  pendingSig: string | null; // 当前待决策集合签名（T2）
+  pendingSince: number; // 签名出现时刻（T2）
+  cmdSeq: number; // 命令日志序号（T6 回放）
+  spectators: Map<number, SpectatorInfo>; // 观战者（T5）
+  lastResult: { winner: string; reasonZh: string } | null; // 上局结果（T4 rematch）
 }
 
 export interface LobbyView {
@@ -70,6 +91,8 @@ export interface LobbyView {
   hasPassword: boolean;
   yourSeat: number;
   youAreHost: boolean;
+  botAuto: boolean;
+  lastResult: { winner: string; reasonZh: string } | null;
 }
 
 export interface RoomFullView {
@@ -79,6 +102,11 @@ export interface RoomFullView {
   log: { id: number; textZh: string; ts: number }[];
   /** 调试代打：房主可见的机器人座位视图（仅限机器人座位，真人座位永不包含） */
   botViews?: Record<number, PlayerView>;
+  /** 当前等待行动的真人座位（对局中） */
+  waiting?: WaitingInfo;
+  /** 观战者视角标记与观战名单 */
+  youAreSpectator?: boolean;
+  spectators?: { id: number; name: string }[];
 }
 
 export class RoomError extends Error {
@@ -93,6 +121,21 @@ export class RoomError extends Error {
 
 function configFrom(room: RoomWrap): RoomConfig {
   return JSON.parse(room.row.configJson).config;
+}
+
+// 机器人自动行动默认值（环境变量控制；房间级可由房主覆盖）
+const BOT_AUTO_DEFAULT = process.env.FTK_BOT_AUTO !== '0';
+
+// 每房间观战者上限
+const MAX_SPECTATORS = Number(process.env.FTK_MAX_SPECTATORS ?? 10);
+
+/** 待决策集合签名：pending 集与激活窗口参与者共同决定；签名变化即重置等待计时 */
+function pendingSignature(state: GameState): string {
+  const pend = state.pending.map((p) => `${p.id}@${p.actorSeat}`).join(',');
+  const win = state.activation
+    ? `${state.activation.windowKind}:${state.activation.passedSeats.join(',')}`
+    : '';
+  return `${pend}|${win}`;
 }
 
 function makeRoomRow(roomId: string, config: RoomConfig): RoomRow {
@@ -128,6 +171,12 @@ export class RoomManager {
         queue: Promise.resolve(),
         dirty: false,
         bots: new Set(),
+        botAuto: BOT_AUTO_DEFAULT,
+        pendingSig: null,
+        pendingSince: Date.now(),
+        cmdSeq: 0,
+        spectators: new Map(),
+        lastResult: null,
       };
       for (const seat of this.store.getSeats(row.roomId)) {
         wrap.seats.set(seat.seatId, {
@@ -141,13 +190,32 @@ export class RoomManager {
         });
       }
       wrap.bots = new Set();
-      // 恢复口令哈希与机器人座位（存于 configJson 包装层）
+      // 恢复包装层：口令哈希 / 机器人座位 / 自动行动开关 / 上局结果 / 幂等水位
       try {
         const parsed = JSON.parse(row.configJson);
         wrap.passwordHash = parsed.passwordHash ?? null;
         for (const b of parsed.bots ?? []) wrap.bots.add(Number(b));
+        wrap.botAuto = typeof parsed.botAuto === 'boolean' ? parsed.botAuto : BOT_AUTO_DEFAULT;
+        wrap.lastResult = parsed.lastResult ?? null;
+        // 幂等水位跨重启恢复：重启窗口内的旧 reqId 重放仍会被拒绝
+        if (parsed.lastReqBySeat && typeof parsed.lastReqBySeat === 'object') {
+          for (const [k, v] of Object.entries(parsed.lastReqBySeat)) {
+            wrap.lastReqBySeat[Number(k)] = Number(v);
+          }
+        }
       } catch {
         /* ignore */
+      }
+      // 恢复观战者（连接状态一律重置为离线，重连后自动置位）
+      for (const sp of this.store.getSpectators(row.roomId)) {
+        wrap.spectators.set(sp.spectatorId, { ...sp, connected: false });
+      }
+      // 恢复命令日志序号（跨重启单调）
+      wrap.cmdSeq = this.store.maxCommandSeq(row.roomId);
+      // 恢复等待计时基线
+      if (wrap.state) {
+        wrap.pendingSig = pendingSignature(wrap.state);
+        wrap.pendingSince = Date.now();
       }
       this.rooms.set(row.roomId, wrap);
     }
@@ -189,6 +257,12 @@ export class RoomManager {
       queue: Promise.resolve(),
       dirty: false,
       bots: new Set(),
+      botAuto: BOT_AUTO_DEFAULT,
+      pendingSig: null,
+      pendingSince: Date.now(),
+      cmdSeq: 0,
+      spectators: new Map(),
+      lastResult: null,
     };
     this.rooms.set(roomId, wrap);
     this.store.createRoom(wrap.row); // 房间行必须先落库，之后 persist 才能更新
@@ -304,6 +378,67 @@ export class RoomManager {
     this.markConnected(roomId, seatId, true);
   }
 
+  // ============ 观战者（T5） ============
+
+  /** 以观战身份加入进行中/已结束的房间；有口令的房间观战同样需要口令 */
+  spectate(opts: { roomId: string; name: string; password?: string }): { roomId: string; token: string; spectatorId: number } {
+    const room = this.rooms.get(opts.roomId?.trim()?.toUpperCase() ?? '');
+    if (!room) throw new RoomError('ROOM_NOT_FOUND', '房间不存在或已关闭', 404);
+    if (room.row.status !== 'playing' && room.row.status !== 'ended') {
+      throw new RoomError('NOT_PLAYING', '对局尚未开始，请以玩家身份加入');
+    }
+    if (!verifyPassword(opts.password ?? '', room.passwordHash)) {
+      throw new RoomError('BAD_PASSWORD', '房间口令错误');
+    }
+    if (room.spectators.size >= MAX_SPECTATORS) {
+      throw new RoomError('SPECTATOR_FULL', '观战席位已满');
+    }
+    const name = sanitizeName(opts.name);
+    let spectatorId = 0;
+    while (room.spectators.has(spectatorId)) spectatorId++;
+    const token = newSessionToken();
+    const tokenHash = hashToken(token);
+    room.spectators.set(spectatorId, { spectatorId, name, tokenHash, connected: false });
+    this.store.addSpectator({
+      roomId: room.row.roomId,
+      spectatorId,
+      name,
+      tokenHash,
+      joinedAt: Date.now(),
+    });
+    this.systemChat(room, `👀 ${name} 进入观战。`);
+    this.persist(room);
+    return { roomId: room.row.roomId, token, spectatorId };
+  }
+
+  /** 观战 token 反查（HMAC 确定性哈希，可索引） */
+  resolveSpectatorToken(token: string): { roomId: string; spectatorId: number } | null {
+    if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
+    if (!tokenHashIsDeterministic(token)) return null;
+    const found = this.store.findSpectatorByTokenHash(hashToken(token));
+    if (!found) return null;
+    // 房间必须仍在内存中（lobby/playing/ended）
+    const room = this.rooms.get(found.roomId);
+    if (!room || !room.spectators.has(found.spectatorId)) return null;
+    return found;
+  }
+
+  markSpectatorConnected(roomId: string, spectatorId: number, connected: boolean) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    const sp = room.spectators.get(spectatorId);
+    if (sp) sp.connected = connected;
+  }
+
+  spectatorCount(roomId: string): number {
+    return this.rooms.get(roomId)?.spectators.size ?? 0;
+  }
+
+  private clearSpectators(room: RoomWrap) {
+    room.spectators.clear();
+    this.store.clearSpectators(room.row.roomId);
+  }
+
   // ============ 大厅操作 ============
 
   setReady(roomId: string, seatId: number, ready: boolean): void {
@@ -320,7 +455,7 @@ export class RoomManager {
     if (!room) return;
     const seat = room.seats.get(seatId);
     if (!seat) return;
-    if (room.row.status !== 'lobby') {
+    if (room.row.status === 'playing') {
       throw new RoomError('GAME_STARTED', '对局中不能离开座位（可以断线）');
     }
     const wasHost = seat.isHost;
@@ -361,6 +496,44 @@ export class RoomManager {
   botSeats(roomId: string): number[] {
     const room = this.rooms.get(roomId);
     return room ? [...room.bots].sort((a, b) => a - b) : [];
+  }
+
+  // ============ 机器人自动行动（T1） ============
+
+  /** 房主开关机器人自动行动（大厅与对局中均可切换） */
+  setBotAuto(roomId: string, hostSeatId: number, enabled: boolean): void {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new RoomError('ROOM_NOT_FOUND', '房间不存在', 404);
+    if (!room.seats.get(hostSeatId)?.isHost) throw new RoomError('NOT_HOST', '只有房主可以切换自动代打');
+    room.botAuto = !!enabled;
+    this.systemChat(room, enabled ? '🤖 机器人自动代打已开启。' : '🤖 机器人自动代打已关闭（需手动代打）。');
+    this.persist(room);
+  }
+
+  botAutoEnabled(roomId: string): boolean {
+    const room = this.rooms.get(roomId);
+    return room ? room.botAuto && room.bots.size > 0 && room.row.status === 'playing' : false;
+  }
+
+  /** 机器人座位的过滤视图（仅机器人座位；真人座位一律返回 null，防越权窥探） */
+  gameViewForSeat(roomId: string, seatId: number): PlayerView | null {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.state || room.row.status !== 'playing') return null;
+    if (!room.bots.has(seatId)) return null;
+    return this.filterViewForSeat(room, room.state, seatId);
+  }
+
+  playingRoomIds(): string[] {
+    const out: string[] = [];
+    for (const [roomId, room] of this.rooms) {
+      if (room.row.status === 'playing' && room.state) out.push(roomId);
+    }
+    return out;
+  }
+
+  /** 开启自动行动且存在机器人的进行中房间（供启动时补 kick） */
+  playingRoomIdsWithBots(): string[] {
+    return this.playingRoomIds().filter((id) => this.botAutoEnabled(id));
   }
 
   /** 房主在对局开始前切换地图（auto=按人数自动：5-7短航程，8+长航程） */
@@ -421,15 +594,31 @@ export class RoomManager {
     // mapId='auto' 由引擎按人数解析（5-7 短航程 / 8+ 长航程）
     const seats = [...room.seats.values()].sort((a, b) => a.seatId - b.seatId).map((s) => ({ seatId: s.seatId, name: s.name }));
     const rng = new SeededRng(randomSeed());
+    // 回放根基：记录 createGameState 之前的初始 RNG 状态（开局发牌等已消费随机数，事后无法还原）
+    const initialRngState = rng.exportState();
     let state: GameState;
+    const gameConfig = { ...config, roomPassword: '' };
     try {
-      state = createGameState(seats, { ...config, roomPassword: '' }, rng);
+      state = createGameState(seats, gameConfig, rng);
     } catch (e) {
       throw new RoomError('MAP_UNAVAILABLE', (e as Error).message);
     }
     room.state = state;
     room.row.status = 'playing';
     room.row.gameJson = JSON.stringify(state);
+    room.lastResult = null;
+    // 注意：cmdSeq 跨局单调递增（rematch 后再次开局沿用递增序号，主键 (room_id, seq) 不冲突）；
+    // replayData 从最后一条 setup 起取命令，天然只回放最新一局。
+    room.pendingSig = pendingSignature(state);
+    room.pendingSince = Date.now();
+    this.store.appendCommand({
+      roomId,
+      seq: ++room.cmdSeq,
+      kind: 'setup',
+      seatId: null,
+      payload: { seats, config: gameConfig, rngState: initialRngState },
+      ts: Date.now(),
+    });
     this.systemChat(room, '对局开始！各就各位。');
     this.persist(room);
   }
@@ -465,8 +654,24 @@ export class RoomManager {
     try {
       engineApply(state, seatId, cmd);
       room.lastReqBySeat[seatId] = reqId;
+      // 命令日志：幂等跳过的请求不会到这里（提前 return），此处均为真实生效的命令
+      room.cmdSeq += 1;
+      this.store.appendCommand({
+        roomId: room.row.roomId,
+        seq: room.cmdSeq,
+        kind: 'command',
+        seatId,
+        payload: cmd,
+        ts: Date.now(),
+      });
       if (state.result) {
         room.row.status = 'ended';
+      }
+      // 等待计时：待决策集合变化时重置基线
+      const sig = pendingSignature(state);
+      if (sig !== room.pendingSig) {
+        room.pendingSig = sig;
+        room.pendingSince = Date.now();
       }
       this.persist(room);
     } catch (e) {
@@ -501,6 +706,140 @@ export class RoomManager {
     if (room.chat.length > 200) room.chat.splice(0, room.chat.length - 200);
   }
 
+  /** 公开系统消息入口（超时提示、托管通知等） */
+  systemMessage(roomId: string, text: string) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    this.systemChat(room, text);
+    this.persist(room);
+  }
+
+  // ============ 待行动计时与超时托管（T2） ============
+
+  /** 当前需要行动的真人座位（机器人排除）与等待起点；无等待返回 null */
+  waitingInfo(roomId: string): WaitingInfo | null {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.state || room.row.status !== 'playing' || room.state.result) return null;
+    const state = room.state;
+    const seats = new Set<number>();
+    for (const p of state.pending) {
+      if (p.actorSeat >= 0 && !room.bots.has(p.actorSeat)) seats.add(p.actorSeat);
+    }
+    if (state.activation) {
+      for (const p of alivePlayers(state)) {
+        if (!state.activation.passedSeats.includes(p.seatId) && !room.bots.has(p.seatId)) seats.add(p.seatId);
+      }
+    }
+    if (seats.size === 0) return null;
+    return { seats: [...seats].sort((a, b) => a - b), since: room.pendingSince };
+  }
+
+  /** 某座位是否只等激活窗口（无 pending 决策）——超时仅对此类座位自动 pass */
+  seatOnlyAwaitingWindow(roomId: string, seatId: number): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.state) return false;
+    const state = room.state;
+    if (state.pending.some((p) => p.actorSeat === seatId)) return false;
+    if (!state.activation) return false;
+    const me = state.players.find((p) => p.seatId === seatId);
+    if (!me || me.eliminated) return false;
+    return !state.activation.passedSeats.includes(seatId);
+  }
+
+  /**
+   * 扫描超时：对「仅等待激活窗口」且超过 timeoutMs 的真人座位自动通过。
+   * 关键决策（哗变交枪、任命等 pending）永不自动代打。返回自动 pass 的座位数。
+   * onChanged 在每次自动通过生效后回调（用于服务端广播视图刷新）。
+   */
+  sweepPendingTimeouts(opts: {
+    timeoutMs: number;
+    nextReqId: (roomId: string) => number;
+    onChanged?: (roomId: string) => void;
+    now?: number;
+  }): number {
+    const now = opts.now ?? Date.now();
+    let n = 0;
+    for (const roomId of this.playingRoomIds()) {
+      const info = this.waitingInfo(roomId);
+      if (!info || now - info.since < opts.timeoutMs) continue;
+      const room = this.rooms.get(roomId)!;
+      for (const seat of info.seats) {
+        if (!this.seatOnlyAwaitingWindow(roomId, seat)) continue;
+        // 走同一 applyGameCommand 通道（房间队列串行 + 幂等）
+        void this.applyGameCommand(roomId, seat, { type: 'pass' }, opts.nextReqId(roomId))
+          .then(() => {
+            const name = room.seats.get(seat)?.name ?? `P${seat + 1}`;
+            this.systemMessage(roomId, `${name} 超时，自动通过了行动窗口。`);
+            opts.onChanged?.(roomId);
+          })
+          .catch(() => {
+            /* 已被真人解决或规则拒绝则忽略 */
+          });
+        n++;
+      }
+    }
+    return n;
+  }
+
+  // ============ 再来一局（T4） ============
+
+  /** 对局结束后回到大厅：保留房间码/座位/房主/口令；上局结果摘要随视图透出 */
+  rematch(roomId: string, seatId: number): void {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new RoomError('ROOM_NOT_FOUND', '房间不存在', 404);
+    if (room.row.status !== 'ended') throw new RoomError('NOT_ENDED', '对局尚未结束');
+    if (!room.seats.get(seatId)?.isHost) throw new RoomError('NOT_HOST', '只有房主可以发起来一局');
+    const result = room.state?.result ?? null;
+    room.lastResult = result ? { winner: result.winner, reasonZh: result.reasonZh } : null;
+    room.state = null;
+    room.row.gameJson = null;
+    room.row.status = 'lobby';
+    room.lastReqBySeat = {};
+    room.pendingSig = null;
+    room.pendingSince = Date.now();
+    for (const s of room.seats.values()) {
+      s.ready = room.bots.has(s.seatId); // 机器人自动准备
+      this.store.updateSeat(roomId, s.seatId, { ready: s.ready });
+    }
+    this.clearSpectators(room); // 新一局开始前清空观战席（观战连接将退回首页）
+    this.systemChat(room, '新的一局已就绪，请大家准备！');
+    this.persist(room);
+  }
+
+  // ============ 回放数据（T6） ============
+
+  /** 对局回放数据：最后一次 setup + 其后全部命令 + 终局结果。仅 ended 房间可取。 */
+  replayData(roomId: string): {
+    setup: { seats: { seatId: number; name: string }[]; config: RoomConfig; rngState: number[] };
+    commands: { seq: number; seatId: number | null; payload: unknown; ts: number }[];
+    finalResult: { winner: string; reasonZh: string } | null;
+    seatNames: Record<number, string>;
+  } | null {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new RoomError('ROOM_NOT_FOUND', '房间不存在', 404);
+    if (room.row.status !== 'ended') throw new RoomError('NOT_ENDED', '对局尚未结束', 403);
+    const all = this.store.listCommands(roomId);
+    let setupIdx = -1;
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i].kind === 'setup') {
+        setupIdx = i;
+        break;
+      }
+    }
+    if (setupIdx < 0) return null;
+    const setupRec = all[setupIdx];
+    const setup = setupRec.payload as { seats: { seatId: number; name: string }[]; config: RoomConfig; rngState: number[] };
+    const seatNames: Record<number, string> = {};
+    for (const s of setup.seats) seatNames[s.seatId] = s.name;
+    const result = room.state?.result ?? null;
+    return {
+      setup,
+      commands: all.slice(setupIdx + 1).map((c) => ({ seq: c.seq, seatId: c.seatId, payload: c.payload, ts: c.ts })),
+      finalResult: result ? { winner: result.winner, reasonZh: result.reasonZh } : null,
+      seatNames,
+    };
+  }
+
   // ============ 视图 ============
 
   lobbyView(roomId: string, seatId: number): LobbyView {
@@ -519,12 +858,43 @@ export class RoomManager {
       hasPassword: !!room.passwordHash,
       yourSeat: seatId,
       youAreHost: room.seats.get(seatId)?.isHost ?? false,
+      botAuto: room.botAuto,
+      lastResult: room.lastResult,
     };
   }
 
-  fullView(roomId: string, seatId: number): RoomFullView {
+  /** 观战者视图（spectator 投影 + 连接状态叠加；任何秘密都不进入） */
+  private filterSpectatorView(room: RoomWrap, state: GameState): PlayerView {
+    const view = buildSpectatorView(state);
+    for (const vp of view.players) {
+      vp.connected = room.seats.get(vp.seatId)?.connected ?? false;
+    }
+    return view;
+  }
+
+  fullView(roomId: string, seatId: number, opts?: { spectator?: boolean }): RoomFullView {
     const room = this.rooms.get(roomId);
     if (!room) throw new RoomError('ROOM_NOT_FOUND', '房间不存在', 404);
+    // 观战者：spectator 投影、仅公开日志、无大厅视图
+    if (opts?.spectator) {
+      const game = room.state ? this.filterSpectatorView(room, room.state) : null;
+      const log = room.state
+        ? (room.state.log
+            .filter((l) => l.visibility === 'public')
+            .slice(-120)
+            .map((l) => ({ id: l.id, textZh: l.textZh, ts: l.ts })) as { id: number; textZh: string; ts: number }[])
+        : [];
+      return {
+        lobby: null,
+        game,
+        chat: room.chat,
+        log,
+        youAreSpectator: true,
+        spectators: [...room.spectators.values()]
+          .sort((a, b) => a.spectatorId - b.spectatorId)
+          .map((s) => ({ id: s.spectatorId, name: s.name })),
+      };
+    }
     const inGame = room.row.status !== 'lobby' && room.state;
     const game = inGame && room.state ? this.filterViewForSeat(room, room.state, seatId) : null;
     const log = game
@@ -534,11 +904,22 @@ export class RoomManager {
           .map((l) => ({ id: l.id, textZh: l.textZh, ts: l.ts })) as { id: number; textZh: string; ts: number }[])
       : [];
     const view: RoomFullView = {
-      lobby: room.row.status === 'lobby' ? this.lobbyView(roomId, seatId) : null,
+      // ended 状态也透出大厅视图（含上局结果与房主身份），供"再来一局"UI 使用
+      lobby: room.row.status === 'lobby' || room.row.status === 'ended' ? this.lobbyView(roomId, seatId) : null,
       game,
       chat: room.chat,
       log,
     };
+    if (room.spectators.size > 0) {
+      view.spectators = [...room.spectators.values()]
+        .sort((a, b) => a.spectatorId - b.spectatorId)
+        .map((s) => ({ id: s.spectatorId, name: s.name }));
+    }
+    // 待行动计时（仅对局中）
+    if (room.row.status === 'playing') {
+      const waiting = this.waitingInfo(roomId);
+      if (waiting) view.waiting = waiting;
+    }
     // 调试代打：房主额外获得机器人座位的过滤视图（只含机器人，绝不含真人座位）
     if (room.seats.get(seatId)?.isHost && room.bots.size > 0 && room.state) {
       const botViews: Record<number, PlayerView> = {};
@@ -579,7 +960,7 @@ export class RoomManager {
 
   // ============ 维护 ============
 
-  /** 清理过期房间（大厅 12 小时无活动；对局 72 小时无活动） */
+  /** 清理过期房间（大厅 12 小时无活动；对局 72 小时无活动），并物理删除归档超 7 天的库行 */
   cleanup(): number {
     const now = Date.now();
     let n = 0;
@@ -589,10 +970,13 @@ export class RoomManager {
         room.row.status = 'archived';
         this.store.saveRoom(room.row);
         this.store.clearSeats(roomId);
+        this.store.clearSpectators(roomId);
         this.rooms.delete(roomId);
         n++;
       }
     }
+    // 归档行保留 7 天后物理删除（T13：防止 rooms/commands 表无限膨胀）
+    this.store.deleteArchivedRooms(7 * 86400_000);
     return n;
   }
 
@@ -614,6 +998,9 @@ export class RoomManager {
       config: configFrom(room),
       passwordHash: room.passwordHash,
       bots: [...room.bots],
+      botAuto: room.botAuto,
+      lastResult: room.lastResult,
+      lastReqBySeat: room.lastReqBySeat, // 幂等水位持久化（T13）
     });
     this.store.saveRoom(room.row);
     room.dirty = false;

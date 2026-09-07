@@ -87,7 +87,15 @@ export class RateLimiter {
     const now = Date.now();
     let b = this.buckets.get(key);
     if (!b) {
-      if (this.buckets.size >= this.maxKeys) this.buckets.clear(); // 防内存膨胀
+      if (this.buckets.size >= this.maxKeys) {
+        // 防内存膨胀：淘汰最早插入的一半 key（Map 保持插入序），避免全清误伤活跃用户
+        const victims = Math.floor(this.buckets.size / 2);
+        let n = 0;
+        for (const k of this.buckets.keys()) {
+          this.buckets.delete(k);
+          if (++n >= victims) break;
+        }
+      }
       b = { tokens: this.max, lastRefill: now };
       this.buckets.set(key, b);
     }
