@@ -4,7 +4,7 @@
 // 视图使用 spectator 投影（仅公开信息），复盘不泄露未揭示的秘密。
 // ============================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createGameState,
   applyCommand,
@@ -16,6 +16,7 @@ import type { RoomConfig, Command } from '@ftk/engine';
 import type { ReplayData } from '../api';
 import { apiReplay } from '../api';
 import { DEFAULT_SKIN_ID, getSkin } from './boards/registry';
+import { useModalDismiss } from './useModalDismiss';
 
 /** 重放到指定 seq 的观战视图（纯计算，失败返回 null） */
 function replayAt(data: ReplayData, uptoSeq: number) {
@@ -46,6 +47,9 @@ export const ReplayView: React.FC<{ roomId: string; onClose: () => void }> = ({ 
   const [err, setErr] = useState('');
   const [upto, setUpto] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // T12：Esc 关闭 / 焦点圈闭
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalDismiss(panelRef, true, onClose);
 
   useEffect(() => {
     let alive = true;
@@ -114,7 +118,7 @@ export const ReplayView: React.FC<{ roomId: string; onClose: () => void }> = ({ 
 
   return (
     <div className="replay-mask">
-      <div className="replay panel">
+      <div ref={panelRef} className="replay panel" role="dialog" aria-modal="true" aria-label="对局复盘" tabIndex={-1}>
         <header className="topbar">
           <span className="title">🎥 复盘 · 房间 {roomId}</span>
           <span className="stage">

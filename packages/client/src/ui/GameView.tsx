@@ -14,6 +14,7 @@ import {
   requestDesktopPermission,
   NotifySettings,
 } from '../notify';
+import { useModalDismiss } from './useModalDismiss';
 import { CHARACTER_MAP, getMap } from '@ftk/engine';
 import type { PlayerView } from '@ftk/engine';
 import type { Command } from '@ftk/engine';
@@ -122,6 +123,10 @@ const PlayerGameView: React.FC<{
     return () => clearInterval(t);
   }, [hasWaiting]);
   const waitSecs = full.waiting ? Math.max(0, Math.floor((now - full.waiting.since) / 1000)) : 0;
+
+  // T12：设置弹窗 Esc/焦点圈闭
+  const settingsRef = useRef<HTMLDivElement>(null);
+  useModalDismiss(settingsRef, showSettings, () => setShowSettings(false));
 
   const botViews = full.botViews ?? {};
   const botSeats = Object.keys(botViews)
@@ -256,7 +261,7 @@ const PlayerGameView: React.FC<{
         <div className="col right">
           <div className="panel">
             <div className="panel-title">📜 航海日志</div>
-            <div className="log" ref={logRef}>
+            <div className="log" ref={logRef} role="log" aria-live="polite">
               {full.log.map((l) => (
                 <div key={l.id} className="log-line">
                   {l.textZh}
@@ -298,7 +303,15 @@ const PlayerGameView: React.FC<{
       {showReplay && <ReplayView roomId={session.roomId} onClose={() => setShowReplay(false)} />}
       {showSettings && (
         <div className="modal-mask" onClick={() => setShowSettings(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={settingsRef}
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="回合提醒设置"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-title">🔔 回合提醒设置</div>
             <label className="field check">
               <input
@@ -405,7 +418,7 @@ const SpectatorGameView: React.FC<{
           <div className="col right">
             <div className="panel">
               <div className="panel-title">📜 航海日志（公开）</div>
-              <div className="log" ref={logRef}>
+              <div className="log" ref={logRef} role="log" aria-live="polite">
                 {full.log.map((l) => (
                   <div key={l.id} className="log-line">
                     {l.textZh}

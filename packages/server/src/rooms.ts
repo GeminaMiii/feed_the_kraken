@@ -190,13 +190,19 @@ export class RoomManager {
         });
       }
       wrap.bots = new Set();
-      // 恢复包装层：口令哈希 / 机器人座位 / 自动行动开关 / 上局结果
+      // 恢复包装层：口令哈希 / 机器人座位 / 自动行动开关 / 上局结果 / 幂等水位
       try {
         const parsed = JSON.parse(row.configJson);
         wrap.passwordHash = parsed.passwordHash ?? null;
         for (const b of parsed.bots ?? []) wrap.bots.add(Number(b));
         wrap.botAuto = typeof parsed.botAuto === 'boolean' ? parsed.botAuto : BOT_AUTO_DEFAULT;
         wrap.lastResult = parsed.lastResult ?? null;
+        // 幂等水位跨重启恢复：重启窗口内的旧 reqId 重放仍会被拒绝
+        if (parsed.lastReqBySeat && typeof parsed.lastReqBySeat === 'object') {
+          for (const [k, v] of Object.entries(parsed.lastReqBySeat)) {
+            wrap.lastReqBySeat[Number(k)] = Number(v);
+          }
+        }
       } catch {
         /* ignore */
       }
@@ -954,7 +960,7 @@ export class RoomManager {
 
   // ============ 维护 ============
 
-  /** 清理过期房间（大厅 12 小时无活动；对局 72 小时无活动） */
+  /** 清理过期房间（大厅 12 小时无活动；对局 72 小时无活动），并物理删除归档超 7 天的库行 */
   cleanup(): number {
     const now = Date.now();
     let n = 0;
@@ -969,6 +975,8 @@ export class RoomManager {
         n++;
       }
     }
+    // 归档行保留 7 天后物理删除（T13：防止 rooms/commands 表无限膨胀）
+    this.store.deleteArchivedRooms(7 * 86400_000);
     return n;
   }
 
@@ -992,6 +1000,7 @@ export class RoomManager {
       bots: [...room.bots],
       botAuto: room.botAuto,
       lastResult: room.lastResult,
+      lastReqBySeat: room.lastReqBySeat, // 幂等水位持久化（T13）
     });
     this.store.saveRoom(room.row);
     room.dirty = false;

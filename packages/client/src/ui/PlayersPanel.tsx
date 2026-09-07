@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import type { PlayerView, ViewPlayer } from '@ftk/engine';
 import { CHARACTER_MAP, NAV_CARD_MAP, NAV_TYPE_ZH, DIRECTION_ZH } from '@ftk/engine';
 import { characterFaceUrl } from './characters';
+import { useModalDismiss } from './useModalDismiss';
 
 const cardNameZh = (id: string) => {
   const c = NAV_CARD_MAP[id];
@@ -20,6 +21,8 @@ const NOT_ZH: Record<string, string> = { sailor: '水手', pirate: '海盗', cul
 export const PlayersPanel: React.FC<{ view: PlayerView }> = ({ view }) => {
   const [inspecting, setInspecting] = useState<{ name: string; cid: string } | null>(null);
   const def = inspecting ? CHARACTER_MAP[inspecting.cid] : null;
+  const modalRef = useRef<HTMLDivElement>(null);
+  useModalDismiss(modalRef, !!(inspecting && def), () => setInspecting(null));
   return (
     <div className="players">
       {view.players.map((p) => (
@@ -32,7 +35,15 @@ export const PlayersPanel: React.FC<{ view: PlayerView }> = ({ view }) => {
       ))}
       {inspecting && def && (
         <div className="modal-mask" onClick={() => setInspecting(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={modalRef}
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${inspecting.name} 的角色：${def.nameZh}`}
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-title">
               {inspecting.name} 的角色 · {def.nameZh}
             </div>

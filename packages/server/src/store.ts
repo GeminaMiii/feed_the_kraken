@@ -151,10 +151,11 @@ export class Store {
     }));
   }
 
-  archiveStaleRooms(beforeTs: number): number {
+  /** 物理删除已归档超过时限的房间行（防库无限膨胀；内存侧归档由 RoomManager.cleanup 完成） */
+  deleteArchivedRooms(olderThanMs: number): number {
     const res = this.db
-      .prepare("UPDATE rooms SET status = 'archived' WHERE status = 'lobby' AND updated_at < ?")
-      .run(beforeTs);
+      .prepare("DELETE FROM rooms WHERE status = 'archived' AND updated_at < ?")
+      .run(Date.now() - olderThanMs);
     return Number(res.changes);
   }
 
