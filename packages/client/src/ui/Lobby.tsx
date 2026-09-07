@@ -76,6 +76,13 @@ export const Lobby: React.FC<{
         </div>
         <div className="panel">
           <div className="panel-title">⚙️ 对局设置</div>
+          {lobby.lastResult && (
+            <div className="hint last-result">
+              上局结果：{
+                { sailor: '忠诚水手', pirate: '海盗', cult: '邪教' }[lobby.lastResult.winner] ?? lobby.lastResult.winner
+              }获胜 — {lobby.lastResult.reasonZh}
+            </div>
+          )}
           <div className="hint">人数：{lobby.playerCount} · 地图：{lobby.mapId === 'auto' ? '自动（5-7人短航程 / 8人以上长航程）' : lobby.mapId === 'quick' ? '短航程' : '长航程'}</div>
           {lobby.youAreHost && (
             <label className="field">
@@ -91,6 +98,14 @@ export const Lobby: React.FC<{
           {lobby.youAreHost && lobby.seats.length < lobby.playerCount && (
             <button className="btn big" onClick={() => act({ action: 'addBot' })}>
               🤖 添加机器人（自动代打，用于调试）
+            </button>
+          )}
+          {lobby.youAreHost && lobby.seats.some((s) => s.isBot) && (
+            <button
+              className={`btn big ${lobby.botAuto ? 'sel' : ''}`}
+              onClick={() => act({ action: 'setBotAuto', enabled: !lobby.botAuto })}
+            >
+              {lobby.botAuto ? '🤖 自动代打：开启（点击关闭）' : '🤖 自动代打：关闭（点击开启）'}
             </button>
           )}
           {lobby.youAreHost ? (
