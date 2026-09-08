@@ -61,7 +61,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ p, view, myFactionOpen, onToggl
         {p.isCaptain && <span className="badge cap">船长</span>}{p.isLieutenant && <span className="badge lt">副手</span>}{p.isNavigator && <span className="badge nav">领航员</span>}
         {p.offDuty && <span className="badge off">停职</span>}{p.noTongue && <span className="badge off">割舌</span>}{!p.connected && <span className="badge discon">离线</span>}
       </span></div>
-      <div className="player-stats"><span>枪支 <b>{p.guns}</b></span><span>履历 <b>{p.resumeCount}</b></span>{teammate && <span className="badge mate">队友</span>}{dead && <span className="dead-tag">{p.eliminationReason === 'overboard' ? '跳海' : '献祭'}出局</span>}</div>
+      <div className="player-stats"><span>枪支 <b>{p.guns ?? '？'}</b></span><span>履历 <b>{p.resumeCount}</b></span>{teammate && <span className="badge mate">队友</span>}{dead && <span className="dead-tag">{p.eliminationReason === 'overboard' ? '跳海' : '献祭'}出局</span>}</div>
       {roleName && <button className="revealed-role-link" onClick={() => onZoom(p.revealedCharacterId!)}>已亮出角色：{roleName}</button>}
       {p.resumes.length > 0 && <div className="resume-track" aria-label={`${p.name} 的船长履历`}>
         {p.resumes.map((id, index) => <button className="resume-token" key={`${id}:${index}`} onClick={() => onZoom(id)} title="点击放大这张船长履历"><CardFace id={id} compact /></button>)}

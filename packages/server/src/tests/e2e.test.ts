@@ -523,8 +523,12 @@ describe('超时托管（T2）', () => {
     // botAuto 保持关闭：机器人不动，全桌只有房主会被托管 pass
     await lobbyCall({ action: 'start' });
 
-    // 开局 beforeAppointment 激活窗口；房主不操作，等待超时扫描（5s 周期 + 300ms 阈值）
-    await wait(7500);
+    // 扫描周期为 5 秒。如果房间恰好在扫描前不足 300ms 建立，第一次会合理跳过，
+    // 因此轮询到下一个扫描周期，避免依赖定时器相位造成偶发失败。
+    const timeoutDeadline = Date.now() + 12_000;
+    while (Date.now() < timeoutDeadline && !JSON.stringify(lastView.chat ?? []).includes('自动通过了行动窗口')) {
+      await wait(250);
+    }
     expect(lastView.game?.youPassedWindow, '房主应被超时托管自动通过').toBe(true);
     const chatText = JSON.stringify(lastView.chat ?? []);
     expect(chatText).toContain('自动通过了行动窗口');

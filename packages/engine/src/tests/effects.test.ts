@@ -246,8 +246,8 @@ describe('角色效果：哗变相关', () => {
     applyCommand(state, 3, { type: 'activateCharacter', characterId: 'chr_equalizer' });
     closeWindow(state);
     const p = expectPending(state, 'mutinySubmit');
-    expect(() => applyCommand(state, p.actorSeat, { type: 'submitGuns', count: 2 })).toThrow(/至多/);
-    const first = p.actorSeat;
+    const first = (p.data.eligible as number[])[0];
+    expect(() => applyCommand(state, first, { type: 'submitGuns', count: 2 })).toThrow(/至多/);
     applyCommand(state, first, { type: 'submitGuns', count: 1 });
     submitAll(state, () => 0);
     passWindow(state);
