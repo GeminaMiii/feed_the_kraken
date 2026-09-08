@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeState, passWindow, topPending, expectPending, cmd, submitAll } from './helpers';
-import { NAV_DECK_FULL, NAV_DECK_QUICK } from '../data/gamedata';
+import { DIRECTION_COLOR_ZH, NAV_DECK_FULL, NAV_DECK_QUICK, NAV_EFFECT_ZH } from '../data/gamedata';
 import { CHARACTERS } from '../data/characters';
 import { getLongMap, getQuickMap } from '../data/maps';
 import { createGameState } from '../state';
@@ -17,6 +17,23 @@ describe('开局设置', () => {
     expect(NAV_DECK_FULL.length).toBe(23);
     expect(new Set(NAV_DECK_FULL.map((c) => c.id)).size).toBe(23);
     expect(NAV_DECK_QUICK.length).toBe(19);
+  });
+
+  it('七类导航牌的方向、颜色、数量和效果语义一致', () => {
+    const expected = [
+      ['cultUprising', 'north', '黄色', 6, '邪教仪式牌'],
+      ['drunk', 'east', '蓝色', 4, '船长职移交'],
+      ['disarmed', 'east', '蓝色', 2, '交出 1 把枪'],
+      ['drunk', 'west', '红色', 5, '船长职移交'],
+      ['mermaid', 'west', '红色', 2, '最近 3 张弃牌'],
+      ['telescope', 'west', '红色', 2, '牌堆顶导航牌'],
+      ['armed', 'west', '红色', 2, '获得 1 把枪'],
+    ] as const;
+    for (const [type, direction, color, count, effectText] of expected) {
+      expect(NAV_DECK_FULL.filter((c) => c.type === type && c.direction === direction)).toHaveLength(count);
+      expect(DIRECTION_COLOR_ZH[direction]).toBe(color);
+      expect(NAV_EFFECT_ZH[type]).toContain(effectText);
+    }
   });
 
   it('长航程地图完整性：31格、出口对称性、行动格数量', () => {

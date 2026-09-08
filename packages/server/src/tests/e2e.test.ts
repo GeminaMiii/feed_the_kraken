@@ -154,7 +154,7 @@ async function driveGame(socket: Socket, hostSeat: number, opts: { untilRound?: 
       driveOne(socket, lastView.game as never, ownPending, undefined, { reqId, attempts, sent, errors }, () => ++reqId);
       continue;
     }
-    if (game.activationWindowKind && !game.youPassedWindow) {
+    if (!game.you?.eliminated && game.activationWindowKind && !game.youPassedWindow) {
       // 通过是幂等操作：每轮无条件重发，防止 ack 竞态导致卡住
       socket.emit('command', { command: { type: 'pass' }, reqId: ++reqId }, (r: { error?: unknown }) => {
         if (r?.error) errors.set(`win-self`, JSON.stringify(r.error));
@@ -401,7 +401,7 @@ describe('机器人自动对局 + 回放 + 再来一局（T1/T4/T6）', () => {
         }
         continue;
       }
-      if (game.activationWindowKind && !game.youPassedWindow) {
+      if (!game.you?.eliminated && game.activationWindowKind && !game.youPassedWindow) {
         await emitCmd({ type: 'pass' });
       }
     }

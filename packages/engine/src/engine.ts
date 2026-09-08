@@ -794,7 +794,8 @@ function handleChoosePlayer(state: GameState, rng: Rng, pending: PendingChoice, 
       pushPending(state, {
         kind: 'telescopeDecision',
         actorSeat: target.seatId,
-        data: { src: 'telescope' },
+        // 只会由视图投影下发给 actor；其他玩家收到 null，不能看到牌堆顶。
+        data: { src: 'telescope', cardPreview: card },
         reasonZh: `望远镜：牌堆顶是「${cardNameZh(card)}」，弃掉还是放回？`,
       });
       break;
