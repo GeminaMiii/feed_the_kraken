@@ -49,6 +49,11 @@ export function waitingForText(state: GameState, viewerSeat?: number): string {
   if (state.result) return '对局已结束';
   const pending = state.pending[state.pending.length - 1];
   if (pending && pending.kind !== 'activationWindow') {
+    if (pending.kind === 'mutinySubmit') {
+      const eligible = mutinyEligibleSeats(state, pending);
+      const submitted = eligible.filter((s) => state.mutiny.submissions[s] !== null && state.mutiny.submissions[s] !== undefined).length;
+      return `请玩家选择缴械枪数（已确认 ${submitted}/${eligible.length}）`;
+    }
     if (isSecretCultPending(pending)) {
       return pending.actorSeat === viewerSeat
         ? `请秘密处理：${pending.reasonZh}`
@@ -139,7 +144,8 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
       seatId: p.seatId,
       name: p.name,
       connected: true, // 由服务端填充连接状态
-      guns: p.guns, // 哗变外为公开信息
+      // 秘密并发提交期间，扣除后的剩余枪数会反推出提交数；仅本人可见。
+      guns: state.mutiny.stage === 'submitting' && p.seatId !== seatId ? null : p.guns,
       resumeCount: p.resumeCount,
       // Stop-work status is public. The captain is not exempt from the status;
       // the previous conditional accidentally hid every non-captain's marker.
@@ -166,10 +172,13 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
     .filter((p) => p.kind !== 'activationWindow')
     .map((p) => {
       const secretFromViewer = isSecretCultPending(p) && p.actorSeat !== seatId;
+      const simultaneousMutinyMine = p.kind === 'mutinySubmit' &&
+        mutinyEligibleSeats(state, p).includes(seatId) &&
+        (state.mutiny.submissions[seatId] === null || state.mutiny.submissions[seatId] === undefined);
       return {
       id: p.id,
       kind: p.kind,
-      mine: p.actorSeat === seatId,
+      mine: simultaneousMutinyMine || p.actorSeat === seatId,
       actorSeat: secretFromViewer ? -1 : p.actorSeat,
       reasonZh: secretFromViewer ? '等待邪教主进行秘密操作' : p.reasonZh,
       data: secretFromViewer ? {} : sanitizePendingData(state, p, seatId),
@@ -242,6 +251,10 @@ export function buildPlayerView(state: GameState, seatId: number): PlayerView {
       .map(ritualNameZh),
     mutinyPublic: {
       stage: state.mutiny.stage,
+      submittedCount: state.mutiny.submittedOrder.length,
+      eligibleCount: state.pending.find((p) => p.kind === 'mutinySubmit')
+        ? mutinyEligibleSeats(state, state.pending.find((p) => p.kind === 'mutinySubmit')!).length
+        : Object.keys(state.mutiny.submissions).length,
       revealedTotal: state.mutiny.stage === 'revealed' ? state.mutiny.revealedTotal : null,
       threshold: state.mutiny.threshold,
       revealedBySeat: state.mutiny.stage === 'revealed' ? revealSubmissions(state, seatId) : null,
@@ -284,11 +297,20 @@ function sanitizePendingData(state: GameState, p: PendingChoice, viewerSeat: num
     out[k] = data[k];
   }
   // 忠诚质询：本人可知道的出枪上下限（煽动者强制为公开事件）
-  if (p.kind === 'mutinySubmit' && p.actorSeat === viewerSeat) {
+  if (p.kind === 'mutinySubmit' && mutinyEligibleSeats(state, p).includes(viewerSeat)) {
     out.yourMin = state.mutiny.forcedMinBySeat[viewerSeat] ?? 0;
     out.yourMax = state.mutiny.maxRevealPerPlayer ?? seatOf(state, viewerSeat).guns;
   }
   return out;
+}
+
+function mutinyEligibleSeats(state: GameState, pending: PendingChoice): number[] {
+  const listed = pending.data.eligible;
+  return Array.isArray(listed)
+    ? listed.filter((seat): seat is number => typeof seat === 'number')
+    : alivePlayers(state)
+      .filter((p) => p.seatId !== state.captain && !state.mutiny.excludedFromMutiny.includes(p.seatId))
+      .map((p) => p.seatId);
 }
 
 function computeActivationOptionsForView(state: GameState, seatId: number): ActivationOption[] {

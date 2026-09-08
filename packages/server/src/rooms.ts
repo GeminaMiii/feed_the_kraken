@@ -723,7 +723,15 @@ export class RoomManager {
     const state = room.state;
     const seats = new Set<number>();
     for (const p of state.pending) {
-      if (p.actorSeat >= 0 && !room.bots.has(p.actorSeat)) seats.add(p.actorSeat);
+      if (p.kind === 'mutinySubmit') {
+        const eligible = Array.isArray(p.data.eligible) ? p.data.eligible as number[] : [];
+        for (const seat of eligible) {
+          const submitted = state.mutiny.submissions[seat];
+          if ((submitted === null || submitted === undefined) && !room.bots.has(seat)) seats.add(seat);
+        }
+      } else if (p.actorSeat >= 0 && !room.bots.has(p.actorSeat)) {
+        seats.add(p.actorSeat);
+      }
     }
     if (state.activation) {
       for (const p of alivePlayers(state)) {

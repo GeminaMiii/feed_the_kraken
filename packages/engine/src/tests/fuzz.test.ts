@@ -134,14 +134,17 @@ function handlePending(state: GameState, rnd: SeededRandom, p: { kind: string; a
       break;
     }
     case 'mutinySubmit': {
-      const guns = state.players[actor].guns;
+      const eligible = (p.data.eligible as number[]) ?? [];
+      const submitter = eligible.find((s) => state.mutiny.submissions[s] === null || state.mutiny.submissions[s] === undefined);
+      if (submitter === undefined) break;
+      const guns = state.players[submitter].guns;
       const max = Math.min(state.mutiny.maxRevealPerPlayer ?? guns, guns);
-      const forcedMin = Math.min(state.mutiny.forcedMinBySeat[actor] ?? 0, max);
+      const forcedMin = Math.min(state.mutiny.forcedMinBySeat[submitter] ?? 0, max);
       const lo = Math.max(0, forcedMin);
       if (max >= lo) {
         for (let c = lo; c <= max; c++) {
           const cc = rnd.next() < 0.7 ? Math.min(max, lo + rnd.int(max - lo + 1)) : c;
-          if (cc >= lo && cc <= max && tryCommand(state, actor, { type: 'submitGuns', count: cc })) return;
+          if (cc >= lo && cc <= max && tryCommand(state, submitter, { type: 'submitGuns', count: cc })) return;
         }
       }
       break;

@@ -305,7 +305,8 @@ const PendingUI: React.FC<{ pending: ViewPending; view: PlayerView; onCommand: P
       const cnt = Math.max(min, Math.min(max, gunCount ?? min));
       return (
         <div>
-          <div className="hint">🤫 忠诚质询：秘密选择要亮出的枪数（{min} 至 {max} 把）。所有人都提交后同时揭示。</div>
+          <div className="hint">🤫 请玩家选择缴械枪数：你可以秘密选择 {min} 至 {max} 把。所有玩家可以同时操作，全部确认后统一揭示哗变结果。</div>
+          <div className="hint small">当前已确认 {view.mutinyPublic.submittedCount}/{view.mutinyPublic.eligibleCount} 人；其他玩家只能看到确认进度，不能看到你的枪数。</div>
           {view.mutinyPublic.threshold > 0 && <div className="hint small">成功哗变需要 {view.mutinyPublic.threshold} 把枪（总表决为公开信息，但每人的选择保密）。</div>}
           <div className="stepper">
             <button disabled={busy || cnt <= min} onClick={() => setGunCount(cnt - 1)}>−</button>

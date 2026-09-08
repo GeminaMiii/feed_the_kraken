@@ -246,8 +246,8 @@ describe('角色效果：哗变相关', () => {
     applyCommand(state, 3, { type: 'activateCharacter', characterId: 'chr_equalizer' });
     closeWindow(state);
     const p = expectPending(state, 'mutinySubmit');
-    expect(() => applyCommand(state, p.actorSeat, { type: 'submitGuns', count: 2 })).toThrow(/至多/);
-    const first = p.actorSeat;
+    const first = (p.data.eligible as number[])[0];
+    expect(() => applyCommand(state, first, { type: 'submitGuns', count: 2 })).toThrow(/至多/);
     applyCommand(state, first, { type: 'submitGuns', count: 1 });
     submitAll(state, () => 0);
     passWindow(state);
@@ -398,6 +398,76 @@ describe('导航牌与地图行动', () => {
     state.stage = 'resolveNavCard';
     advanceNow(state);
     expect(state.captain).toBe(2);
+  });
+
+  it('武装与缴械：西红牌给领航员1枪，东蓝牌令领航员交回1枪', () => {
+    const armed = setupScenario(6, { captain: 0, navigator: 2, guns: { 2: 2 } });
+    armed.shipHex = 'h1'; // 西 → h2（无地图行动）
+    armed.playedCardThisRound = 'nav_armed_west_1';
+    armed.stage = 'resolveNavCard';
+    const supplyBeforeArmed = armed.gunSupply;
+    advanceNow(armed);
+    expect(armed.shipHex).toBe('h2');
+    expect(armed.players[2].guns).toBe(3);
+    expect(armed.gunSupply).toBe(supplyBeforeArmed - 1);
+
+    const disarmed = setupScenario(6, { captain: 0, navigator: 2, guns: { 2: 2 } });
+    disarmed.shipHex = 'h1'; // 东 → h3（无地图行动）
+    disarmed.playedCardThisRound = 'nav_disarmed_east_1';
+    disarmed.stage = 'resolveNavCard';
+    const supplyBeforeDisarmed = disarmed.gunSupply;
+    advanceNow(disarmed);
+    expect(disarmed.shipHex).toBe('h3');
+    expect(disarmed.players[2].guns).toBe(1);
+    expect(disarmed.gunSupply).toBe(supplyBeforeDisarmed + 1);
+  });
+
+  it('美人鱼：西红牌由船长选择另一名玩家，只有该玩家看到最近3张弃牌', () => {
+    const state = setupScenario(6, { captain: 0, navigator: 2 });
+    state.shipHex = 'h1';
+    state.recentDiscards = ['nav_drunk_east_1', 'nav_armed_west_1', 'nav_disarmed_east_1'];
+    state.playedCardThisRound = 'nav_mermaid_west_1';
+    state.stage = 'resolveNavCard';
+    advanceNow(state);
+    expectPending(state, 'choosePlayer', 0);
+    applyCommand(state, 0, { type: 'choosePlayer', seat: 3 });
+    const chosenLogs = state.log.filter((l) => l.visibility === 3).map((l) => l.textZh).join(' ');
+    expect(chosenLogs).toContain('东·醉酒');
+    expect(chosenLogs).toContain('西·武装');
+    expect(chosenLogs).toContain('东·缴械');
+    expect(state.log.filter((l) => l.visibility === 'public').map((l) => l.textZh).join(' ')).not.toContain('东·醉酒、');
+  });
+
+  it('望远镜：西红牌由船长选人，牌堆顶卡面仅下发给被选中的玩家', () => {
+    const state = setupScenario(6, { captain: 0, navigator: 2 });
+    state.shipHex = 'h1';
+    state.navDeck = ['nav_drunk_east_1', ...state.navDeck.filter((id) => id !== 'nav_drunk_east_1')];
+    state.playedCardThisRound = 'nav_telescope_west_1';
+    state.stage = 'resolveNavCard';
+    advanceNow(state);
+    expectPending(state, 'choosePlayer', 0);
+    applyCommand(state, 0, { type: 'choosePlayer', seat: 3 });
+    expectPending(state, 'telescopeDecision', 3);
+    expect(buildPlayerView(state, 3).pending.find((p) => p.mine)?.data.cardPreview).toBe('nav_drunk_east_1');
+    expect(buildPlayerView(state, 4).pending[0].data.cardPreview).toBeNull();
+    applyCommand(state, 3, { type: 'telescopeDecision', discard: true });
+    expect(state.navDiscard).toContain('nav_drunk_east_1');
+  });
+
+  it('邪教暴动：北黄牌移动后先开放黄色角色窗口，窗口结束才执行仪式', () => {
+    const state = setupScenario(6, { captain: 0, navigator: 2, factions: { 1: 'cultLeader' } });
+    state.shipHex = 'h1';
+    state.cultRitual.deckOrder = ['ritual_guns_stash'];
+    state.cultRitual.revealedCount = 0;
+    state.playedCardThisRound = 'nav_cultUprising_north_1';
+    state.stage = 'resolveNavCard';
+    advanceNow(state);
+    expect(state.shipHex).toBe('h4');
+    expect(state.activation?.windowKind).toBe('yellowRound');
+    expect(state.cultRitual.revealedCount).toBe(0);
+    passWindow(state);
+    expect(state.cultRitual.revealedCount).toBe(1);
+    expectPending(state, 'gunsStash', 1);
   });
 
   it('献祭海妖：邪教主被献祭则邪教立即获胜', () => {

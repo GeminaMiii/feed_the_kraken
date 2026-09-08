@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeState, passWindow, topPending, expectPending, cmd, submitAll } from './helpers';
-import { NAV_DECK_FULL, NAV_DECK_QUICK } from '../data/gamedata';
+import { DIRECTION_COLOR_ZH, NAV_DECK_FULL, NAV_DECK_QUICK, NAV_EFFECT_ZH } from '../data/gamedata';
 import { CHARACTERS } from '../data/characters';
 import { getLongMap, getQuickMap } from '../data/maps';
 import { createGameState } from '../state';
@@ -17,6 +17,23 @@ describe('开局设置', () => {
     expect(NAV_DECK_FULL.length).toBe(23);
     expect(new Set(NAV_DECK_FULL.map((c) => c.id)).size).toBe(23);
     expect(NAV_DECK_QUICK.length).toBe(19);
+  });
+
+  it('七类导航牌的方向、颜色、数量和效果语义一致', () => {
+    const expected = [
+      ['cultUprising', 'north', '黄色', 6, '邪教仪式牌'],
+      ['drunk', 'east', '蓝色', 4, '船长职移交'],
+      ['disarmed', 'east', '蓝色', 2, '交出 1 把枪'],
+      ['drunk', 'west', '红色', 5, '船长职移交'],
+      ['mermaid', 'west', '红色', 2, '最近 3 张弃牌'],
+      ['telescope', 'west', '红色', 2, '牌堆顶导航牌'],
+      ['armed', 'west', '红色', 2, '获得 1 把枪'],
+    ] as const;
+    for (const [type, direction, color, count, effectText] of expected) {
+      expect(NAV_DECK_FULL.filter((c) => c.type === type && c.direction === direction)).toHaveLength(count);
+      expect(DIRECTION_COLOR_ZH[direction]).toBe(color);
+      expect(NAV_EFFECT_ZH[type]).toContain(effectText);
+    }
   });
 
   it('长航程地图完整性：31格、出口对称性、行动格数量', () => {
@@ -246,18 +263,45 @@ describe('忠诚质询与哗变', () => {
   it('重复提交被拒绝', () => {
     const state = reachSubmit();
     const p = topPending(state)!;
-    const firstActor = p.actorSeat;
+    const firstActor = (p.data.eligible as number[])[0];
     applyCommand(state, firstActor, { type: 'submitGuns', count: 1 });
-    // 该玩家此时不再是被等待者；若其再次提交应被拒绝
+    // 其他玩家仍可并发提交，但该玩家自己的重复提交必须被拒绝。
     expect(() => applyCommand(state, firstActor, { type: 'submitGuns', count: 2 })).toThrow(
-      /等待|提交/,
+      /提交/,
     );
   });
 
   it('出枪数超过持有量被拒绝', () => {
     const state = reachSubmit();
     const p = topPending(state)!;
-    expect(() => applyCommand(state, p.actorSeat, { type: 'submitGuns', count: 4 })).toThrow();
+    const submitter = (p.data.eligible as number[])[0];
+    expect(() => applyCommand(state, submitter, { type: 'submitGuns', count: 4 })).toThrow();
+  });
+
+  it('所有合资格玩家同时获得提交权，提交顺序不受座位号限制', () => {
+    const state = reachSubmit();
+    const p = topPending(state)!;
+    const eligible = p.data.eligible as number[];
+    expect(p.actorSeat).toBe(-1);
+    for (const seat of eligible) expect(buildPlayerView(state, seat).pending[0].mine).toBe(true);
+    expect(buildPlayerView(state, state.captain).pending[0].mine).toBe(false);
+
+    const reverseOrder = eligible.slice().reverse();
+    for (let index = 0; index < reverseOrder.length; index++) {
+      applyCommand(state, reverseOrder[index], { type: 'submitGuns', count: 0 });
+      if (index < reverseOrder.length - 1) {
+        expect(state.stage).toBe('mutinySubmitWait');
+        const submittedView = buildPlayerView(state, reverseOrder[index]);
+        const waitingView = buildPlayerView(state, reverseOrder[index + 1]);
+        expect(submittedView.pending[0].mine).toBe(false);
+        expect(waitingView.pending[0].mine).toBe(true);
+        expect(waitingView.waitingFor).toContain(`已确认 ${index + 1}/${eligible.length}`);
+        expect(waitingView.mutinyPublic.revealedBySeat).toBeNull();
+        expect(waitingView.players.find((player) => player.seatId === reverseOrder[index])?.guns).toBeNull();
+      }
+    }
+    expect(state.mutiny.submittedOrder).toEqual(reverseOrder);
+    expect(state.stage).not.toBe('mutinySubmitWait');
   });
 });
 

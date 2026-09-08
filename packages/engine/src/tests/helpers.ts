@@ -68,7 +68,10 @@ export function submitAll(state: GameState, countFor: (seat: number) => number =
   let guard = 0;
   while (topPending(state)?.kind === 'mutinySubmit' && guard++ < 20) {
     const p = topPending(state)!;
-    applyCommand(state, p.actorSeat, { type: 'submitGuns', count: countFor(p.actorSeat) });
+    const eligible = (p.data.eligible as number[]) ?? [];
+    const seat = eligible.find((s) => state.mutiny.submissions[s] === null || state.mutiny.submissions[s] === undefined);
+    if (seat === undefined) break;
+    applyCommand(state, seat, { type: 'submitGuns', count: countFor(seat) });
   }
 }
 

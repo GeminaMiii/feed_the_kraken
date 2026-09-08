@@ -48,6 +48,23 @@ export const DIRECTION_ZH: Record<string, string> = {
   west: '西',
 };
 
+/** 航向在实体导航牌上的固定颜色：北黄、东蓝、西红。 */
+export const DIRECTION_COLOR_ZH: Record<string, string> = {
+  north: '黄色',
+  east: '蓝色',
+  west: '红色',
+};
+
+/** 导航牌文字效果；界面说明与引擎动作共用同一组类型语义。 */
+export const NAV_EFFECT_ZH: Record<NavCardDef['type'], string> = {
+  cultUprising: '航海结束时翻开并执行一张邪教仪式牌',
+  drunk: '船长职移交给符合条件且履历牌最少的玩家',
+  disarmed: '领航员向供应区交出 1 把枪',
+  mermaid: '船长选择另一名玩家，令其秘密查看最近 3 张弃牌',
+  telescope: '船长选择另一名玩家，令其秘密查看牌堆顶导航牌并决定弃掉或放回',
+  armed: '领航员从供应区获得 1 把枪',
+};
+
 // ============ 邪教仪式牌 ============
 
 export const RITUAL_DECK = [

@@ -128,6 +128,13 @@ function handleCommand(state: GameState, rng: Rng, seatId: number, cmd: Command)
     handleWindowCommand(state, rng, seatId, cmd);
     return;
   }
+  // 忠诚质询是多人同时秘密提交：同一个 pending 对所有尚未提交的
+  // 合资格玩家开放，不能再用 actorSeat 串行点名。
+  if (pending.kind === 'mutinySubmit') {
+    if (cmd.type !== 'submitGuns') throw badCmd();
+    handleMutinySubmit(state, seatId, cmd.count);
+    return;
+  }
   if (pending.actorSeat !== seatId) {
     throw new RuleError('NOT_YOUR_TURN', `当前等待 ${nameOf(state, pending.actorSeat)} 操作`);
   }
@@ -165,11 +172,6 @@ function handleCommand(state: GameState, rng: Rng, seatId: number, cmd: Command)
       state.pending.pop();
       state.stage = 'appointConsultant'; // 窗口关闭后再让船长任命领航员
       pushLog(state, `顾问发动：${nameOf(state, cmd.seat)} 被指定为副手。`);
-      break;
-    }
-    case 'mutinySubmit': {
-      if (cmd.type !== 'submitGuns') throw badCmd();
-      handleMutinySubmit(state, seatId, cmd.count);
       break;
     }
     case 'tiePick': {
@@ -794,7 +796,8 @@ function handleChoosePlayer(state: GameState, rng: Rng, pending: PendingChoice, 
       pushPending(state, {
         kind: 'telescopeDecision',
         actorSeat: target.seatId,
-        data: { src: 'telescope' },
+        // 只会由视图投影下发给 actor；其他玩家收到 null，不能看到牌堆顶。
+        data: { src: 'telescope', cardPreview: card },
         reasonZh: `望远镜：牌堆顶是「${cardNameZh(card)}」，弃掉还是放回？`,
       });
       break;
@@ -1080,11 +1083,12 @@ function beginMutinySubmit(state: GameState) {
     return;
   }
   state.stage = 'mutinySubmitWait';
+  for (const seatId of eligible) state.mutiny.submissions[seatId] = null;
   pushPending(state, {
     kind: 'mutinySubmit',
-    actorSeat: eligible[0],
+    actorSeat: -1,
     data: { eligible },
-    reasonZh: '忠诚质询：请秘密选择要出的枪数（0 至全部）',
+    reasonZh: '请玩家选择缴械枪数',
   });
 }
 
@@ -1096,6 +1100,10 @@ export function mutinyEligible(state: GameState): number[] {
 
 function handleMutinySubmit(state: GameState, seatId: number, count: number) {
   const p = seatOf(state, seatId);
+  const eligible = mutinyEligible(state);
+  if (!eligible.includes(seatId)) {
+    throw new RuleError('NOT_ELIGIBLE', '你不能参加本次忠诚质询');
+  }
   const existing = state.mutiny.submissions[seatId];
   if (existing !== undefined && existing !== null) {
     throw new RuleError('ALREADY_SUBMITTED', '你已经提交过枪数');
@@ -1113,17 +1121,15 @@ function handleMutinySubmit(state: GameState, seatId: number, count: number) {
     throw new RuleError('FORCED_MIN', `煽动者要求你至少出 ${forcedMin} 把枪`);
   }
   state.mutiny.submissions[seatId] = count;
+  state.mutiny.submittedOrder.push(seatId);
   p.guns -= count; // 枪放上桌（失败时收回，成功哗变后按规则弃掉）
-  const eligible = mutinyEligible(state);
-  const next = eligible.find((s) => {
+  const waiting = eligible.find((s) => {
     const v = state.mutiny.submissions[s];
     return v === undefined || v === null;
   });
-  if (next === undefined) {
+  if (waiting === undefined) {
     state.pending.pop();
     state.stage = 'mutinyReveal';
-  } else {
-    state.pending[state.pending.length - 1].actorSeat = next;
   }
 }
 

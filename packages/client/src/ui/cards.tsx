@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { CHARACTER_MAP, NAV_CARD_MAP, DIRECTION_ZH, NAV_TYPE_ZH, RITUAL_ZH } from '@ftk/engine';
+import { CHARACTER_MAP, NAV_CARD_MAP, DIRECTION_ZH, DIRECTION_COLOR_ZH, NAV_TYPE_ZH, NAV_EFFECT_ZH, RITUAL_ZH } from '@ftk/engine';
 
 // 卡图只取自 public/cards 下的三个子文件夹：characters / navigation / rituals。
 // 角色卡为成品整卡（图片自带标题与技能文字）；导航/仪式卡为独立插画。
 const navAsset = (id: string) => {
   const c = NAV_CARD_MAP[id];
   if (!c) return `/cards/navigation/${id}.png`;
-  const suffix = c.type === 'cultUprising' ? 'cult_uprising' : c.type === 'drunk' ? `drunk_${c.direction}` : c.type;
-  return `/cards/navigation/nav_${suffix}.png`;
+  const effect = c.type === 'cultUprising' ? 'cult_uprising' : c.type;
+  return `/cards/navigation/nav_${c.direction}_${effect}.png`;
 };
 
 export const cardAssetUrl = (id: string): string | null => {
@@ -21,13 +21,13 @@ export const cardAssetUrl = (id: string): string | null => {
 
 export function cardTitle(id: string) {
   const nav = NAV_CARD_MAP[id];
-  if (nav) return `${DIRECTION_ZH[nav.direction]} · ${NAV_TYPE_ZH[nav.type]}`;
+  if (nav) return `${DIRECTION_ZH[nav.direction]} / ${DIRECTION_COLOR_ZH[nav.direction]} · ${NAV_TYPE_ZH[nav.type]}`;
   return RITUAL_ZH[id] ?? CHARACTER_MAP[id]?.nameZh ?? id;
 }
 
 export function cardCopy(id: string) {
   const nav = NAV_CARD_MAP[id];
-  if (nav) return `执行「${NAV_TYPE_ZH[nav.type]}」导航效果，并按航向移动船只。`;
+  if (nav) return `向${DIRECTION_ZH[nav.direction]}航行；${NAV_EFFECT_ZH[nav.type]}。`;
   return CHARACTER_MAP[id]?.textZh ?? ({
     ritual_conversion_1: '秘密选择一名可皈依玩家，将其变为邪教徒。',
     ritual_conversion_2: '秘密选择一名可皈依玩家，将其变为邪教徒。',

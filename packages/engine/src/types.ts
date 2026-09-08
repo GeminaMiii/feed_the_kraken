@@ -362,6 +362,8 @@ export interface PlayerView {
   ritualsRevealed: string[];
   mutinyPublic: {
     stage: string;
+    submittedCount: number;
+    eligibleCount: number;
     revealedTotal: number | null;
     threshold: number;
     revealedBySeat: Record<number, number> | null;
